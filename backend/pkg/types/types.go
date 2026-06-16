@@ -27,6 +27,22 @@ const (
 	NodeSlashed NodeStatus = 3
 )
 
+// MeteredType represents the billing model for a compute job.
+type MeteredType uint8
+
+const (
+	MeteredUnspecified MeteredType = 0
+	TimeBased         MeteredType = 1 // Pay per millisecond of GPU time
+	TokenBased       MeteredType = 2 // Pay per 1M tokens processed (LLM inference)
+)
+
+// RatePerUnit represents the rate at which a metered job is charged.
+// Value is in micro-USDC (1 USDC = 1,000,000 micro-USDC).
+type RatePerUnit struct {
+	MicroUSDCPerUnit uint64 // fractional USDC in micro-cents per unit
+	UnitType         MeteredType // TimeBased (per ms) or TokenBased (per 1M tokens)
+}
+
 // SLABenchmark defines SLA requirements for a compute job.
 type SLABenchmark struct {
 	RequiredUptime    uint64    // percentage * 100 (e.g., 9900 = 99%)
@@ -45,6 +61,13 @@ type Job struct {
 	CheckpointRef   string         // reference to checkpoint data
 	CreatedAt       time.Time      // creation timestamp
 	Deadline        time.Time      // SLA deadline
+
+	// Micro-metering fields for hybrid pay-as-you-use serverless model
+	MeteredType    MeteredType      // billing model: TimeBased or TokenBased
+	RatePerUnit    RatePerUnit     // rate in micro-USDC per unit (ms or per 1M tokens)
+	UsageCounter   uint64           // aggregated total units processed (ms or token count)
+	TotalBilled    *big.Int         // total amount billed in micro-USDC (accumulated)
+	IsServerless   bool            // true if serverless multi-tenant, false if dedicated
 }
 
 // Node represents a GPU compute node.
@@ -55,6 +78,11 @@ type Node struct {
 	Status          NodeStatus // current status
 	LastHeartbeat   time.Time // last heartbeat timestamp
 	RegisteredAt    time.Time // registration timestamp
+
+	// Serverless vs Dedicated differentiation
+	IsReservedPool bool       // true = serverless multi-tenant pool, false = dedicated enterprise node
+	PoolCapacityMB  uint64     // available VRAM MB for serverless pool (0 if dedicated)
+	BaseRateMicroUSDC uint64  // base rate in micro-USDC per ms (for serverless pricing)
 }
 
 // Heartbeat represents a telemetry heartbeat from a node.

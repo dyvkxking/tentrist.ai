@@ -13,11 +13,13 @@ import (
 
 // HeartbeatData represents heartbeat data to be sent to the backend.
 type HeartbeatData struct {
-	NodeID          string `json:"nodeId"`
-	VRAMUsedMB      uint64 `json:"vramUsedMb"`
-	VRAMTotalMB     uint64 `json:"vramTotalMb"`
-	PacketLatencyMs uint64 `json:"packetLatencyMs"`
-	Timestamp       int64  `json:"timestamp"`
+	NodeID               string `json:"nodeId"`
+	VRAMUsedMB           uint64 `json:"vramUsedMb"`
+	VRAMTotalMB          uint64 `json:"vramTotalMb"`
+	PacketLatencyMs      uint64 `json:"packetLatencyMs"`
+	Timestamp            int64  `json:"timestamp"`
+	NodeStatus           uint8  `json:"nodeStatus"`            // 0=Busy, 1=StandbyAvailable, 2=Offline
+	ProcessingDurationMs uint64 `json:"processingDurationMs"` // Micro-task execution time
 }
 
 // Reporter sends heartbeat data to the backend.

@@ -11,6 +11,10 @@ import (
 	"github.com/tentrist.ai/telemetry/src/heartbeat"
 )
 
+// StandbyThresholdPercent is the VRAM usage threshold for standby availability.
+// If VRAM usage is below this, the node reports StandbyAvailable.
+const StandbyThresholdPercent = 70.0
+
 // VRAMCollector collects VRAM utilization metrics.
 type VRAMCollector struct {
 	nodeID    string
@@ -54,21 +58,38 @@ func (c *VRAMCollector) Collect() (*heartbeat.Heartbeat, error) {
 }
 
 // CollectWithContext gathers VRAM metrics with context support.
+// Returns a Heartbeat with NodeStatus set based on VRAM usage:
+// - NodeStatusStandbyAvailable if VRAM usage < 70%
+// - NodeStatusBusy if VRAM usage >= 70%
 func (c *VRAMCollector) CollectWithContext(ctx context.Context) (*heartbeat.Heartbeat, error) {
 	output, err := c.executor.Execute("nvidia-smi",
 		"--query-gpu=memory.used,memory.total",
 		"--format=csv,noheader,nounits")
 	if err != nil {
 		// Fall back to mock data if nvidia-smi is not available
-		return heartbeat.NewHeartbeat(c.nodeID, 4096, 8192, 0), nil
+		return heartbeat.NewHeartbeatWithStatus(c.nodeID, 4096, 8192, 0, heartbeat.NodeStatusStandbyAvailable), nil
 	}
 
 	vramUsed, vramTotal, err := ParseNVidiaSMIOutput(output)
 	if err != nil {
-		return heartbeat.NewHeartbeat(c.nodeID, 4096, 8192, 0), nil
+		return heartbeat.NewHeartbeatWithStatus(c.nodeID, 4096, 8192, 0, heartbeat.NodeStatusStandbyAvailable), nil
 	}
 
-	return heartbeat.NewHeartbeat(c.nodeID, vramUsed, vramTotal, 0), nil
+	// Calculate standby availability based on VRAM usage threshold
+	status := c.CalculateStandbyStatus(vramUsed, vramTotal)
+	return heartbeat.NewHeartbeatWithStatus(c.nodeID, vramUsed, vramTotal, 0, status), nil
+}
+
+// CalculateStandbyStatus determines node status based on VRAM usage.
+func (c *VRAMCollector) CalculateStandbyStatus(vramUsed, vramTotal uint64) heartbeat.NodeStatus {
+	if vramTotal == 0 {
+		return heartbeat.NodeStatusBusy
+	}
+	usagePercent := float64(vramUsed) / float64(vramTotal) * 100
+	if usagePercent < StandbyThresholdPercent {
+		return heartbeat.NodeStatusStandbyAvailable
+	}
+	return heartbeat.NodeStatusBusy
 }
 
 // ParseNVidiaSMIOutput parses nvidia-smi output in format:

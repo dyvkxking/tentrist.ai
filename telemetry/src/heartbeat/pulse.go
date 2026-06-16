@@ -8,6 +8,12 @@ import (
 	"time"
 )
 
+// TaskExecutor defines the interface for tracking micro-task execution duration.
+type TaskExecutor interface {
+	GetTotalProcessingDuration() uint64
+	Reset()
+}
+
 // RetryConfig holds configuration for retry behavior.
 type RetryConfig struct {
 	MaxRetries     int
@@ -26,13 +32,14 @@ func DefaultRetryConfig() *RetryConfig {
 
 // PulseSender sends heartbeat pulses to the backend.
 type PulseSender struct {
-	nodeID     string
-	backendURL string
-	interval   time.Duration
-	collectors []Collector
-	httpClient HTTPPoster
-	retryCfg   *RetryConfig
-	stopCh     chan struct{}
+	nodeID       string
+	backendURL   string
+	interval     time.Duration
+	collectors   []Collector
+	httpClient   HTTPPoster
+	taskExecutor TaskExecutor
+	retryCfg     *RetryConfig
+	stopCh       chan struct{}
 }
 
 // HTTPPoster defines the interface for sending HTTP requests.
@@ -64,6 +71,11 @@ func (ps *PulseSender) AddCollector(c Collector) {
 // SetHTTPClient sets a custom HTTP poster (for testing).
 func (ps *PulseSender) SetHTTPClient(client HTTPPoster) {
 	ps.httpClient = client
+}
+
+// SetTaskExecutor sets the task executor for hybrid model micro-task tracking.
+func (ps *PulseSender) SetTaskExecutor(exec TaskExecutor) {
+	ps.taskExecutor = exec
 }
 
 // SetRetryConfig sets the retry configuration.
@@ -117,8 +129,14 @@ func (ps *PulseSender) sendPulse() {
 		return
 	}
 
-	log.Printf("Heartbeat gathered: node=%s vram=%d/%d latency=%dms",
-		hb.NodeID, hb.VRAMUsedMB, hb.VRAMTotalMB, hb.PacketLatencyMs)
+	// Append processing duration from micro-task executor (hybrid model)
+	if ps.taskExecutor != nil {
+		hb.SetProcessingDuration(ps.taskExecutor.GetTotalProcessingDuration())
+		ps.taskExecutor.Reset() // Reset after appending to next pulse
+	}
+
+	log.Printf("Heartbeat gathered: node=%s vram=%d/%d latency=%dms status=%d processingMs=%d",
+		hb.NodeID, hb.VRAMUsedMB, hb.VRAMTotalMB, hb.PacketLatencyMs, hb.NodeStatus, hb.ProcessingDurationMs)
 
 	// Send to backend with retry and backoff
 	if err := ps.sendWithRetry(hb); err != nil {
@@ -126,8 +144,8 @@ func (ps *PulseSender) sendPulse() {
 		return
 	}
 
-	log.Printf("Heartbeat sent successfully: node=%s vram=%d/%d latency=%dms",
-		hb.NodeID, hb.VRAMUsedMB, hb.VRAMTotalMB, hb.PacketLatencyMs)
+	log.Printf("Heartbeat sent successfully: node=%s vram=%d/%d latency=%dms status=%d processingMs=%d",
+		hb.NodeID, hb.VRAMUsedMB, hb.VRAMTotalMB, hb.PacketLatencyMs, hb.NodeStatus, hb.ProcessingDurationMs)
 }
 
 // sendWithRetry sends a heartbeat with exponential backoff retry.

@@ -51,16 +51,16 @@ func (c *LatencyCollector) Collect() (*heartbeat.Heartbeat, error) {
 // CollectWithContext measures TCP ping latency with context support.
 func (c *LatencyCollector) CollectWithContext(ctx context.Context) (*heartbeat.Heartbeat, error) {
 	if c.targetHost == "" {
-		return heartbeat.NewHeartbeat(c.nodeID, 0, 0, 0), nil
+		return heartbeat.NewHeartbeatWithStatus(c.nodeID, 0, 0, 0, heartbeat.NodeStatusBusy), nil
 	}
 
 	latency, err := c.measureTCPLatency(ctx, c.targetHost)
 	if err != nil {
 		// Return 0 latency on error (connection failed)
-		return heartbeat.NewHeartbeat(c.nodeID, 0, 0, 0), nil
+		return heartbeat.NewHeartbeatWithStatus(c.nodeID, 0, 0, 0, heartbeat.NodeStatusBusy), nil
 	}
 
-	return heartbeat.NewHeartbeat(c.nodeID, 0, 0, latency), nil
+	return heartbeat.NewHeartbeatWithStatus(c.nodeID, 0, 0, latency, heartbeat.NodeStatusBusy), nil
 }
 
 // measureTCPLatency measures the round-trip time for a TCP connection.
