@@ -27,6 +27,10 @@ type JobHandler struct {
 
 	// Node selector for serverless routing
 	nodeSelector NodeSelector
+
+	// External dependencies
+	contractClient interface{}
+	supabaseClient interface{}
 }
 
 // NodeSelector interface for querying healthy standby nodes.
@@ -76,6 +80,16 @@ func NewJobHandlerWithSelector(selector NodeSelector) *JobHandler {
 	h := NewJobHandler()
 	h.nodeSelector = selector
 	return h
+}
+
+// SetContractClient sets the contract client for blockchain interactions.
+func (h *JobHandler) SetContractClient(client interface{}) {
+	h.contractClient = client
+}
+
+// SetSupabaseClient sets the Supabase client for database operations.
+func (h *JobHandler) SetSupabaseClient(client interface{}) {
+	h.supabaseClient = client
 }
 
 // ServerlessJobSubmitRequest represents a serverless job submission request.

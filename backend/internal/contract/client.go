@@ -12,17 +12,21 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 
-	bindings "github.com/tentrist.ai/backend/internal/contract/bindings"
+	escrow "github.com/tentrist.ai/backend/internal/contract/bindings/escrow"
+	noderegistry "github.com/tentrist.ai/backend/internal/contract/bindings/noderegistry"
+	slacontract "github.com/tentrist.ai/backend/internal/contract/bindings/slacontract"
+	slashmanager "github.com/tentrist.ai/backend/internal/contract/bindings/slashmanager"
+	reputationledger "github.com/tentrist.ai/backend/internal/contract/bindings/reputationledger"
 )
 
 // ContractClient is a unified client for all Tentrist smart contracts.
 type ContractClient struct {
 	ethClient           *ethclient.Client
-	escrow              *bindings.Escrow
-	slaContract         *bindings.SLAContract
-	slashManager        *bindings.SlashManager
-	reputationLedger    *bindings.ReputationLedger
-	nodeRegistry        *bindings.NodeRegistry
+	escrow              *escrow.Escrow
+	slaContract         *slacontract.Slacontract
+	slashManager        *slashmanager.Slashmanager
+	reputationLedger    *reputationledger.Reputationledger
+	nodeRegistry        *noderegistry.Noderegistry
 	contractAddresses    ContractAddresses
 }
 
@@ -37,38 +41,38 @@ type ContractAddresses struct {
 
 // NewContractClient creates a new ContractClient with the given ethclient and contract addresses.
 func NewContractClient(ethClient *ethclient.Client, addrs ContractAddresses) (*ContractClient, error) {
-	escrow, err := bindings.NewEscrow(addrs.Escrow, ethClient)
+	escrowContract, err := escrow.NewEscrow(addrs.Escrow, ethClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to bind Escrow: %w", err)
 	}
 
-	slaContract, err := bindings.NewSLAContract(addrs.SLAContract, ethClient)
+	slaContract, err := slacontract.NewSlacontract(addrs.SLAContract, ethClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to bind SLAContract: %w", err)
 	}
 
-	slashManager, err := bindings.NewSlashManager(addrs.SlashManager, ethClient)
+	slashMgr, err := slashmanager.NewSlashmanager(addrs.SlashManager, ethClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to bind SlashManager: %w", err)
 	}
 
-	reputationLedger, err := bindings.NewReputationLedger(addrs.ReputationLedger, ethClient)
+	reputation, err := reputationledger.NewReputationledger(addrs.ReputationLedger, ethClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to bind ReputationLedger: %w", err)
 	}
 
-	nodeRegistry, err := bindings.NewNodeRegistry(addrs.NodeRegistry, ethClient)
+	nodeReg, err := noderegistry.NewNoderegistry(addrs.NodeRegistry, ethClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to bind NodeRegistry: %w", err)
 	}
 
 	return &ContractClient{
 		ethClient:         ethClient,
-		escrow:             escrow,
+		escrow:             escrowContract,
 		slaContract:        slaContract,
-		slashManager:       slashManager,
-		reputationLedger:   reputationLedger,
-		nodeRegistry:       nodeRegistry,
+		slashManager:       slashMgr,
+		reputationLedger:   reputation,
+		nodeRegistry:       nodeReg,
 		contractAddresses:   addrs,
 	}, nil
 }
@@ -77,41 +81,39 @@ func NewContractClient(ethClient *ethclient.Client, addrs ContractAddresses) (*C
 // Escrow Operations
 // ============================================================================
 
-// Stake deposits ETH for a node in the Escrow contract.
+// Stake deposits ETH for a node in the Escrow contract (uses tx value).
 func (c *ContractClient) Stake(ctx context.Context, node common.Address, amount *big.Int) (*types.Transaction, error) {
 	return c.escrow.Stake(&bind.TransactOpts{
 		From:  node,
 		Value: amount,
-		ctx:   ctx,
 	})
 }
 
 // Withdraw stake from Escrow.
-func (c *ContractClient) Withdraw(ctx context.Context, node, from common.Address, amount *big.Int) (*types.Transaction, error) {
+func (c *ContractClient) Withdraw(ctx context.Context, from common.Address, amount *big.Int) (*types.Transaction, error) {
 	return c.escrow.Withdraw(&bind.TransactOpts{
 		From: from,
-		ctx:  ctx,
 	}, amount)
 }
 
 // GetStake returns the current stake amount for a node.
 func (c *ContractClient) GetStake(ctx context.Context, node common.Address) (*big.Int, error) {
-	return c.escrow.GetStake(&bind.CallOpts{ctx: ctx}, node)
+	return c.escrow.GetStake(&bind.CallOpts{Context: ctx}, node)
 }
 
 // HasStaked returns true if the node has staked.
 func (c *ContractClient) HasStaked(ctx context.Context, node common.Address) (bool, error) {
-	return c.escrow.HasStaked(&bind.CallOpts{ctx: ctx}, node)
+	return c.escrow.HasStaked(&bind.CallOpts{Context: ctx}, node)
 }
 
 // GetTotalStaked returns the total staked across all nodes.
 func (c *ContractClient) GetTotalStaked(ctx context.Context) (*big.Int, error) {
-	return c.escrow.GetTotalStaked(&bind.CallOpts{ctx: ctx})
+	return c.escrow.GetTotalStaked(&bind.CallOpts{Context: ctx})
 }
 
 // AuthorizeSlasher sets the slasher address (owner only).
 func (c *ContractClient) AuthorizeSlasher(ctx context.Context, from, slasher common.Address) (*types.Transaction, error) {
-	return c.escrow.AuthorizeSlasher(&bind.TransactOpts{From: from, ctx: ctx}, slasher)
+	return c.escrow.AuthorizeSlasher(&bind.TransactOpts{From: from}, slasher)
 }
 
 // ============================================================================
@@ -123,38 +125,37 @@ func (c *ContractClient) RegisterNode(ctx context.Context, node common.Address, 
 	return c.nodeRegistry.RegisterNode(&bind.TransactOpts{
 		From:  node,
 		Value: stakeAmount,
-		ctx:   ctx,
 	}, stakeAmount)
 }
 
 // GetNode returns full node info.
-func (c *ContractClient) GetNode(ctx context.Context, node common.Address) (bindings.NodeRegistryNode, error) {
-	return c.nodeRegistry.GetNode(&bind.CallOpts{ctx: ctx}, node)
+func (c *ContractClient) GetNode(ctx context.Context, node common.Address) (noderegistry.INodeRegistryNode, error) {
+	return c.nodeRegistry.GetNode(&bind.CallOpts{Context: ctx}, node)
 }
 
 // IsRegistered checks if a node is registered.
 func (c *ContractClient) IsRegistered(ctx context.Context, node common.Address) (bool, error) {
-	return c.nodeRegistry.IsRegistered(&bind.CallOpts{ctx: ctx}, node)
+	return c.nodeRegistry.IsRegistered(&bind.CallOpts{Context: ctx}, node)
 }
 
 // GetNodeStatus returns the node's current status.
 func (c *ContractClient) GetNodeStatus(ctx context.Context, node common.Address) (uint8, error) {
-	return c.nodeRegistry.GetNodeStatus(&bind.CallOpts{ctx: ctx}, node)
+	return c.nodeRegistry.GetNodeStatus(&bind.CallOpts{Context: ctx}, node)
 }
 
 // UpdateHeartbeat updates the last heartbeat timestamp for a node.
 func (c *ContractClient) UpdateHeartbeat(ctx context.Context, node, from common.Address) (*types.Transaction, error) {
-	return c.nodeRegistry.UpdateHeartbeat(&bind.TransactOpts{From: from, ctx: ctx}, node)
+	return c.nodeRegistry.UpdateHeartbeat(&bind.TransactOpts{From: from}, node)
 }
 
 // GetReputation returns a node's reputation score from NodeRegistry.
 func (c *ContractClient) GetNodeReputation(ctx context.Context, node common.Address) (*big.Int, error) {
-	return c.nodeRegistry.GetReputation(&bind.CallOpts{ctx: ctx}, node)
+	return c.nodeRegistry.GetReputation(&bind.CallOpts{Context: ctx}, node)
 }
 
 // GetAllNodes returns all registered node addresses.
 func (c *ContractClient) GetAllNodes(ctx context.Context) ([]common.Address, error) {
-	return c.nodeRegistry.GetAllNodes(&bind.CallOpts{ctx: ctx})
+	return c.nodeRegistry.GetAllNodes(&bind.CallOpts{Context: ctx})
 }
 
 // ============================================================================
@@ -170,38 +171,40 @@ func (c *ContractClient) RecordSLA(
 	deadline time.Time,
 ) (*types.Transaction, error) {
 	deadlineTs := big.NewInt(deadline.Unix())
+	uptimeBig := new(big.Int).SetUint64(uptime)
+	throughputBig := new(big.Int).SetUint64(throughput)
 	return c.slaContract.RecordSLA(
-		&bind.TransactOpts{From: from, ctx: ctx},
+		&bind.TransactOpts{From: from},
 		jobId,
-		uptime,
-		throughput,
+		uptimeBig,
+		throughputBig,
 		deadlineTs,
 	)
 }
 
 // GetSLA returns SLA benchmarks for a job.
-func (c *ContractClient) GetSLA(ctx context.Context, jobId [32]byte) (bindings.SLAContractSLABenchmark, error) {
-	return c.slaContract.GetSLA(&bind.CallOpts{ctx: ctx}, jobId)
+func (c *ContractClient) GetSLA(ctx context.Context, jobId [32]byte) (slacontract.SLABenchmark, error) {
+	return c.slaContract.GetSLA(&bind.CallOpts{Context: ctx}, jobId)
 }
 
 // HasSLA checks if a job has SLA recorded.
 func (c *ContractClient) HasSLA(ctx context.Context, jobId [32]byte) (bool, error) {
-	return c.slaContract.HasSLA(&bind.CallOpts{ctx: ctx}, jobId)
+	return c.slaContract.HasSLA(&bind.CallOpts{Context: ctx}, jobId)
 }
 
 // IsFulfilled checks if a job's SLA was fulfilled.
 func (c *ContractClient) IsFulfilled(ctx context.Context, jobId [32]byte) (bool, error) {
-	return c.slaContract.IsFulfilled(&bind.CallOpts{ctx: ctx}, jobId)
+	return c.slaContract.IsFulfilled(&bind.CallOpts{Context: ctx}, jobId)
 }
 
 // IsBreached checks if a job has breached its deadline.
 func (c *ContractClient) IsBreached(ctx context.Context, jobId [32]byte) (bool, error) {
-	return c.slaContract.IsBreached(&bind.CallOpts{ctx: ctx}, jobId)
+	return c.slaContract.IsBreached(&bind.CallOpts{Context: ctx}, jobId)
 }
 
 // FulfillSLA marks an SLA as fulfilled or breached.
 func (c *ContractClient) FulfillSLA(ctx context.Context, from common.Address, jobId [32]byte, success bool) (*types.Transaction, error) {
-	return c.slaContract.FulfillSLA(&bind.TransactOpts{From: from, ctx: ctx}, jobId, success)
+	return c.slaContract.FulfillSLA(&bind.TransactOpts{From: from}, jobId, success)
 }
 
 // ============================================================================
@@ -217,7 +220,7 @@ func (c *ContractClient) SlashAndCredit(
 	jobValue *big.Int,
 ) (*types.Transaction, error) {
 	return c.slashManager.SlashAndCredit(
-		&bind.TransactOpts{From: from, ctx: ctx},
+		&bind.TransactOpts{From: from},
 		node,
 		client,
 		jobId,
@@ -227,22 +230,22 @@ func (c *ContractClient) SlashAndCredit(
 
 // CalculateSlash returns the slash amount for a given job value.
 func (c *ContractClient) CalculateSlash(ctx context.Context, jobValue *big.Int) (*big.Int, error) {
-	return c.slashManager.CalculateSlash(&bind.CallOpts{ctx: ctx}, jobValue)
+	return c.slashManager.CalculateSlash(&bind.CallOpts{Context: ctx}, jobValue)
 }
 
 // CalculateCredit returns the client credit amount for a given job value.
 func (c *ContractClient) CalculateCredit(ctx context.Context, jobValue *big.Int) (*big.Int, error) {
-	return c.slashManager.CalculateCredit(&bind.CallOpts{ctx: ctx}, jobValue)
+	return c.slashManager.CalculateCredit(&bind.CallOpts{Context: ctx}, jobValue)
 }
 
 // GetSlashPercent returns the slash percentage (basis points).
 func (c *ContractClient) GetSlashPercent(ctx context.Context) (*big.Int, error) {
-	return c.slashManager.GetSlashPercent(&bind.CallOpts{ctx: ctx})
+	return c.slashManager.GetSlashPercent(&bind.CallOpts{Context: ctx})
 }
 
 // GetCreditPercent returns the credit percentage (basis points).
 func (c *ContractClient) GetCreditPercent(ctx context.Context) (*big.Int, error) {
-	return c.slashManager.GetCreditPercent(&bind.CallOpts{ctx: ctx})
+	return c.slashManager.GetCreditPercent(&bind.CallOpts{Context: ctx})
 }
 
 // ============================================================================
@@ -251,37 +254,37 @@ func (c *ContractClient) GetCreditPercent(ctx context.Context) (*big.Int, error)
 
 // InitializeNode initializes a node's reputation in the ledger.
 func (c *ContractClient) InitializeNode(ctx context.Context, from, node common.Address) (*types.Transaction, error) {
-	return c.reputationLedger.InitializeNode(&bind.TransactOpts{From: from, ctx: ctx}, node)
+	return c.reputationLedger.InitializeNode(&bind.TransactOpts{From: from}, node)
 }
 
 // IncrementReputation increases a node's reputation score.
 func (c *ContractClient) IncrementReputation(ctx context.Context, from, node common.Address, delta *big.Int) (*types.Transaction, error) {
-	return c.reputationLedger.IncrementReputation(&bind.TransactOpts{From: from, ctx: ctx}, node, delta)
+	return c.reputationLedger.IncrementReputation(&bind.TransactOpts{From: from}, node, delta)
 }
 
 // DecrementReputation decreases a node's reputation score.
 func (c *ContractClient) DecrementReputation(ctx context.Context, from, node common.Address, delta *big.Int) (*types.Transaction, error) {
-	return c.reputationLedger.DecrementReputation(&bind.TransactOpts{From: from, ctx: ctx}, node, delta)
+	return c.reputationLedger.DecrementReputation(&bind.TransactOpts{From: from}, node, delta)
 }
 
 // GetReputation returns a node's reputation score.
 func (c *ContractClient) GetReputation(ctx context.Context, node common.Address) (*big.Int, error) {
-	return c.reputationLedger.GetReputation(&bind.CallOpts{ctx: ctx}, node)
+	return c.reputationLedger.GetReputation(&bind.CallOpts{Context: ctx}, node)
 }
 
 // GetReputationTier returns the reputation tier string for a node.
 func (c *ContractClient) GetReputationTier(ctx context.Context, node common.Address) (string, error) {
-	return c.reputationLedger.GetReputationTier(&bind.CallOpts{ctx: ctx}, node)
+	return c.reputationLedger.GetReputationTier(&bind.CallOpts{Context: ctx}, node)
 }
 
 // ApplyDecay applies reputation decay to a node.
 func (c *ContractClient) ApplyDecay(ctx context.Context, from, node common.Address) (*types.Transaction, error) {
-	return c.reputationLedger.ApplyDecay(&bind.TransactOpts{From: from, ctx: ctx}, node)
+	return c.reputationLedger.ApplyDecay(&bind.TransactOpts{From: from}, node)
 }
 
 // BatchApplyDecay applies reputation decay to multiple nodes.
 func (c *ContractClient) BatchApplyDecay(ctx context.Context, from common.Address, nodes []common.Address) (*types.Transaction, error) {
-	return c.reputationLedger.BatchApplyDecay(&bind.TransactOpts{From: from, ctx: ctx}, nodes)
+	return c.reputationLedger.BatchApplyDecay(&bind.TransactOpts{From: from}, nodes)
 }
 
 // ============================================================================

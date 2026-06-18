@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+:root {
+  --bg-base: #010102;
+  --bg-surface: #0f1011;
+  --foreground: #fafafa;
+  --foreground-muted: #71717a;
+  --hairline: #27272a;
+}
+
+* { border-color: var(--hairline); }
+
+body {
+  background-color: var(--bg-base);
+  color: var(--foreground);
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.pulse-active {
+  animation: pulse-active 2s ease-in-out infinite;
+}
+@keyframes pulse-active {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}

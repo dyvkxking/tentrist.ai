@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+:root {
+  --bg-base: #010102;
+  --bg-surface: #0f1011;
+  --foreground: #fafafa;
+  --foreground-muted: #71717a;
+  --hairline: #27272a;
+  --indicator-active: #22c55e;
+  --indicator-stale: #f59e0b;
+  --indicator-slashed: #ef4444;
+  --text-blue: #3b82f6;
+}
+
+* {
+  border-color: var(--hairline);
+}
+
+body {
+  background-color: var(--bg-base);
+  color: var(--foreground);
+}
+
+.pulse-active {
+  animation: pulse-active 2s ease-in-out infinite;
+}
+
+@keyframes pulse-active {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.pulse-stale {
+  animation: pulse-stale 2s ease-in-out infinite;
+}
+
+@keyframes pulse-stale {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.pulse-slashed {
+  animation: pulse-slashed 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-slashed {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}

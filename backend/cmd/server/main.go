@@ -18,14 +18,18 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/tentrist.ai/backend/internal/api/handlers"
+	"github.com/tentrist.ai/backend/internal/api/middleware"
 	"github.com/tentrist.ai/backend/internal/contract"
 	"github.com/tentrist.ai/backend/internal/orchestrator"
+	"github.com/tentrist.ai/backend/pkg/supabase"
 )
 
 func main() {
 	// Parse command line flags
 	port := flag.Int("port", 8080, "HTTP server port")
 	hardhatURL := flag.String("hardhat-url", "http://127.0.0.1:8545", "Hardhat node URL")
+	supabaseURL := flag.String("supabase-url", "", "Supabase project URL")
+	supabaseKey := flag.String("supabase-key", "", "Supabase service role key")
 	flag.Parse()
 
 	log.Printf("Starting Tentrist Backend API Server...")
@@ -46,7 +50,11 @@ func main() {
 	}()
 
 	// Initialize Ethereum client
-	ethClient, err := ethclient.Dial(*hardhatURL)
+	var ethClient *ethclient.Client
+	var contractClient *contract.ContractClient
+	var err error
+
+	ethClient, err = ethclient.Dial(*hardhatURL)
 	if err != nil {
 		log.Printf("Warning: Failed to connect to Hardhat: %v (continuing without blockchain)", err)
 		ethClient = nil
@@ -55,10 +63,7 @@ func main() {
 	}
 
 	// Initialize contract client if connected
-	var contractClient *contract.ContractClient
 	if ethClient != nil {
-		// For local testing, we'll use mock addresses
-		// In production, these would come from deployment
 		addrs := contract.ContractAddresses{
 			Escrow:           common.HexToAddress("0x5fbdb2315678afecb367f032d93f642f54180abc"),
 			SLAContract:      common.HexToAddress("0xe7f1725e7734ce288f8367e1bb2a07d5e1a1d1a9"),
@@ -75,29 +80,68 @@ func main() {
 		}
 	}
 
-	// Initialize handlers
+	// Initialize Supabase client
+	var sbClient *supabase.Client
+	if *supabaseURL != "" && *supabaseKey != "" {
+		sbClient, err = supabase.NewClient(supabase.Config{
+			URL: *supabaseURL,
+			Key: *supabaseKey,
+		})
+		if err != nil {
+			log.Printf("Warning: Failed to create Supabase client: %v", err)
+			sbClient = nil
+		} else {
+			log.Println("Supabase client initialized")
+		}
+	} else {
+		log.Println("Supabase credentials not provided, database features disabled")
+	}
+
+	// Initialize handlers with dependencies
 	jobHandler := handlers.NewJobHandler()
+	jobHandler.SetContractClient(contractClient)
+	jobHandler.SetSupabaseClient(sbClient)
+
 	nodeHandler := handlers.NewNodeHandler()
+	nodeHandler.SetContractClient(contractClient)
+	nodeHandler.SetSupabaseClient(sbClient)
+
+	walletLinkHandler := handlers.NewWalletLinkHandler()
+	if sbClient != nil {
+		walletLinkHandler.SetSupabaseClient(sbClient)
+	}
 
 	// Initialize orchestrator components
 	checkpointMgr := orchestrator.NewCheckpointManager()
 	splitter := orchestrator.NewWorkloadSplitter()
+	_ = checkpointMgr
+	_ = splitter
 
-	// Create mux router
+	// Create mux router with middleware
 	muxRouter := mux.NewRouter()
+	muxRouter.Use(middleware.Recovery)
+	muxRouter.Use(middleware.Logging)
+	muxRouter.Use(middleware.CORS)
 
-	// Register routes
-	jobHandler.ServeJobs(muxRouter)
-	nodeHandler.ServeNodes(muxRouter)
+	// API v1 routes
+	api := muxRouter.PathPrefix("/api/v1").Subrouter()
 
-	// Add heartbeat telemetry endpoint
+	// Job routes
+	jobHandler.ServeJobs(api)
+
+	// Node routes
+	nodeHandler.ServeNodes(api)
+
+	// Wallet link routes
+	api.HandleFunc("/auth/wallet/challenge", walletLinkHandler.GenerateChallenge).Methods(http.MethodPost)
+	api.HandleFunc("/auth/wallet/verify", walletLinkHandler.VerifyAndLink).Methods(http.MethodPost)
+	api.HandleFunc("/auth/wallet/{userId}", walletLinkHandler.GetLinkedWallet).Methods(http.MethodGet)
+
+	// Telemetry heartbeat endpoint
 	muxRouter.HandleFunc("/api/v1/telemetry/heartbeat", handleHeartbeat).Methods(http.MethodPost)
 
-	// Add health check
-	muxRouter.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"status":"ok","timestamp":%d}`, time.Now().Unix())
-	}).Methods(http.MethodGet)
+	// Health check
+	muxRouter.HandleFunc("/health", handleHealth).Methods(http.MethodGet)
 
 	// Create HTTP server
 	srv := &http.Server{
@@ -142,11 +186,15 @@ func handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update node's last heartbeat time in node handler
-	// This would normally be done through the contract client
 	log.Printf("Heartbeat received from node %s: VRAM=%d/%d MB, latency=%d ms",
 		hb.NodeID, hb.VRAMUsedMB, hb.VRAMTotalMB, hb.PacketLatencyMs)
 
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"status":"ok","receivedAt":%d}`, time.Now().Unix())
+}
+
+// handleHealth returns server health status.
+func handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"status":"ok","timestamp":%d,"service":"tentrist-backend"}`, time.Now().Unix())
 }

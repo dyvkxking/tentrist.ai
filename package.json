@@ -1,0 +1,19 @@
+{
+  "name": "tentrist",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:nodes": "npm run dev --workspace=apps/nodes",
+    "dev:marketing": "npm run dev --workspace=apps/marketing",
+    "build:web": "npm run build --workspace=apps/web",
+    "build:nodes": "npm run build --workspace=apps/nodes",
+    "build:marketing": "npm run build --workspace=apps/marketing",
+    "build:shared": "npm run build --workspace=packages/shared",
+    "build": "npm run build:shared && npm run build:web && npm run build:nodes"
+  }
+}

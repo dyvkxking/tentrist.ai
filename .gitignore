@@ -1,10 +1,18 @@
+# ============================================
 # Dependencies
+# ============================================
 node_modules/
 package-lock.json
+yarn.lock
+pnpm-lock.yaml
 
+# ============================================
 # Build outputs
+# ============================================
 dist/
 build/
+.next/
+out/
 
 # Contract artifacts
 contracts/artifacts/
@@ -14,24 +22,48 @@ contracts/typechain/
 # Go
 vendor/
 *.exe
+*.out
 
+# Backend bindings (generated, don't commit)
+backend/internal/contract/bindings/*.abi
+backend/internal/contract/bindings/*.bin
+
+# Telemetry binary
+telemetry/tentrist-telemetry
+
+# ============================================
 # IDE
+# ============================================
 .vscode/
 .idea/
 *.swp
 *.swo
 
+# ============================================
 # OS
+# ============================================
 .DS_Store
 Thumbs.db
 
-# Environment
+# ============================================
+# Environment - NEVER COMMIT THESE
+# ============================================
 .env
 .env.local
+.env.*.local
+.env.production
+.env.staging
 
-# Graphify output
+# ============================================
+# Temporary & Output
+# ============================================
 graphify-out/
-
-# Temporary files
 *.tmp
 *.temp
+*.log
+
+# ============================================
+# Hardhat
+# ============================================
+contracts/artifacts/
+hardhat-artifacts/

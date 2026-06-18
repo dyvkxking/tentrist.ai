@@ -19,6 +19,10 @@ import (
 type NodeHandler struct {
 	mu    sync.RWMutex
 	nodes map[string]*types.Node
+
+	// External dependencies
+	contractClient interface{}
+	supabaseClient interface{}
 }
 
 // NewNodeHandler creates a new NodeHandler with in-memory storage.
@@ -26,6 +30,16 @@ func NewNodeHandler() *NodeHandler {
 	return &NodeHandler{
 		nodes: make(map[string]*types.Node),
 	}
+}
+
+// SetContractClient sets the contract client for blockchain interactions.
+func (h *NodeHandler) SetContractClient(client interface{}) {
+	h.contractClient = client
+}
+
+// SetSupabaseClient sets the Supabase client for database operations.
+func (h *NodeHandler) SetSupabaseClient(client interface{}) {
+	h.supabaseClient = client
 }
 
 // NodeRegisterRequest represents a node registration request.
