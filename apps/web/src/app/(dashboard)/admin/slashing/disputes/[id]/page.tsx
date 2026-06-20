@@ -19,30 +19,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { RequireAuth } from "@/components/providers/require-auth";
+import { adminGetDispute } from "@/lib/supabase-admin";
 
-function generateMockDisputeDetail(id: string) {
-  return {
-    id,
-    nodeAddress: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
-    nodeId: "node_0087",
-    jobId: "job_a1b2c3d4",
-    slashAmount: 0.45,
-    reason: "SLA breach: missed heartbeat intervals",
-    status: "pending" as const,
-    createdAt: Date.now() - 2 * 60 * 60 * 1000,
-    slaDetails: {
-      requiredUptime: 95,
-      actualUptime: 87.3,
-      requiredThroughput: 100,
-      actualThroughput: 78,
-      missedHeartbeats: 12,
-    },
-    txHash: "0xabc123...def456",
-    adminNotes: "",
-  };
-}
-
-function formatDate(timestamp: number): string {
+function formatDate(timestamp: string): string {
   return new Date(timestamp).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -68,8 +47,49 @@ interface AdminDisputeDetailContentProps {
 }
 
 function AdminDisputeDetailContent({ disputeId }: AdminDisputeDetailContentProps) {
-  const dispute = generateMockDisputeDetail(disputeId);
-  const [adminNotes, setAdminNotes] = React.useState(dispute.adminNotes);
+  const [dispute, setDispute] = React.useState<any | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [adminNotes, setAdminNotes] = React.useState("");
+
+  React.useEffect(() => {
+    async function loadData() {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await adminGetDispute(disputeId);
+        setDispute(data);
+        setAdminNotes(data.admin_notes || "");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load dispute");
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, [disputeId]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="h-12 w-64 bg-bg-base rounded animate-pulse" />
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="h-48 bg-bg-surface/80 rounded" />
+          <div className="h-48 bg-bg-surface/80 rounded" />
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !dispute) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="p-8 text-center text-indicator-slashed">
+          {error || "Dispute not found"}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -93,7 +113,7 @@ function AdminDisputeDetailContent({ disputeId }: AdminDisputeDetailContentProps
               </Badge>
             </div>
             <p className="text-sm text-foreground-muted">
-              Filed {formatDate(dispute.createdAt)}
+              Filed {formatDate(dispute.created_at)}
             </p>
           </div>
         </div>
@@ -117,7 +137,7 @@ function AdminDisputeDetailContent({ disputeId }: AdminDisputeDetailContentProps
               <div className="flex justify-between text-sm">
                 <span className="text-foreground-muted">Slash Amount</span>
                 <span className="font-mono-data text-indicator-slashed font-semibold">
-                  -{dispute.slashAmount.toFixed(3)} ETH
+                  -{dispute.slash_amount.toFixed(3)} ETH
                 </span>
               </div>
               <div className="flex justify-between text-sm">
@@ -126,15 +146,15 @@ function AdminDisputeDetailContent({ disputeId }: AdminDisputeDetailContentProps
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-foreground-muted">Created</span>
-                <span className="text-foreground">{formatDate(dispute.createdAt)}</span>
+                <span className="text-foreground">{formatDate(dispute.created_at)}</span>
               </div>
             </div>
 
-            {dispute.txHash && (
+            {dispute.tx_hash && (
               <div className="pt-3 border-t border-hairline">
                 <div className="text-xs text-foreground-muted mb-1">On-Chain Reference</div>
                 <div className="p-2 bg-bg-base rounded font-mono-data text-xs text-indicator-active">
-                  {dispute.txHash}
+                  {dispute.tx_hash}
                 </div>
               </div>
             )}
@@ -153,16 +173,16 @@ function AdminDisputeDetailContent({ disputeId }: AdminDisputeDetailContentProps
             <div className="space-y-3">
               <div className="flex justify-between text-sm">
                 <span className="text-foreground-muted">Node ID</span>
-                <Link href={`/admin/nodes/${dispute.nodeId}`}>
+                <Link href={`/admin/nodes/${dispute.node_id}`}>
                   <span className="font-mono-data text-indicator-active hover:underline cursor-pointer">
-                    {dispute.nodeId}
+                    {dispute.node_id}
                   </span>
                 </Link>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-foreground-muted">Operator Address</span>
                 <span className="font-mono-data text-xs text-foreground">
-                  {dispute.nodeAddress.slice(0, 8)}...{dispute.nodeAddress.slice(-6)}
+                  {dispute.node_address.slice(0, 8)}...{dispute.node_address.slice(-6)}
                 </span>
               </div>
             </div>
@@ -173,25 +193,25 @@ function AdminDisputeDetailContent({ disputeId }: AdminDisputeDetailContentProps
                 <div className="p-2 bg-bg-base rounded text-center">
                   <div className="text-xs text-foreground-muted">Uptime</div>
                   <div className="font-mono-data text-sm">
-                    {dispute.slaDetails.actualUptime.toFixed(1)}%
+                    {dispute.sla_details.actual_uptime.toFixed(1)}%
                     <span className="text-indicator-slashed text-xs">
-                      {" "}/ {dispute.slaDetails.requiredUptime}%
+                      {" "}/ {dispute.sla_details.required_uptime}%
                     </span>
                   </div>
                 </div>
                 <div className="p-2 bg-bg-base rounded text-center">
                   <div className="text-xs text-foreground-muted">Throughput</div>
                   <div className="font-mono-data text-sm">
-                    {dispute.slaDetails.actualThroughput}
+                    {dispute.sla_details.actual_throughput}
                     <span className="text-indicator-slashed text-xs">
-                      {" "}/ {dispute.slaDetails.requiredThroughput}
+                      {" "}/ {dispute.sla_details.required_throughput}
                     </span>
                   </div>
                 </div>
                 <div className="p-2 bg-bg-base rounded text-center col-span-2">
                   <div className="text-xs text-foreground-muted">Missed Heartbeats</div>
                   <div className="font-mono-data text-indicator-slashed">
-                    {dispute.slaDetails.missedHeartbeats}
+                    {dispute.sla_details.missed_heartbeats}
                   </div>
                 </div>
               </div>
@@ -213,15 +233,15 @@ function AdminDisputeDetailContent({ disputeId }: AdminDisputeDetailContentProps
             <div className="flex items-center gap-4">
               <div>
                 <div className="text-xs text-foreground-muted">Job ID</div>
-                <Link href={`/admin/jobs/${dispute.jobId}`}>
+                <Link href={`/admin/jobs/${dispute.job_id}`}>
                   <span className="text-sm font-mono-data text-indicator-active hover:underline cursor-pointer">
-                    {dispute.jobId}
+                    {dispute.job_id}
                   </span>
                 </Link>
               </div>
             </div>
             <div className="flex gap-2">
-              <Link href={`/admin/jobs/${dispute.jobId}`}>
+              <Link href={`/admin/jobs/${dispute.job_id}`}>
                 <Button variant="outline" size="sm" className="gap-2">
                   <FileText className="h-4 w-4" />
                   View Job
@@ -296,7 +316,7 @@ function AdminDisputeDetailContent({ disputeId }: AdminDisputeDetailContentProps
               </div>
               <div className="flex justify-between">
                 <span className="text-foreground-muted">Transaction:</span>
-                <span className="text-indicator-active">{dispute.txHash || "Pending"}</span>
+                <span className="text-indicator-active">{dispute.tx_hash || "Pending"}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-foreground-muted">Block:</span>

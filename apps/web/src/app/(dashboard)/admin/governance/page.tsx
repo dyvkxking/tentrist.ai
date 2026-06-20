@@ -17,75 +17,22 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RequireAuth } from "@/components/providers/require-auth";
+import { adminListProposals } from "@/lib/supabase-admin";
 
 interface Proposal {
   id: string;
   title: string;
   type: "Parameter Change" | "Contract Upgrade" | "Budget";
   status: "pending" | "active" | "passed" | "rejected";
-  votesFor: number;
-  votesAgainst: number;
-  createdAt: number;
-  deadline: number;
+  votes_for: number;
+  votes_against: number;
+  created_at: string;
+  deadline: string;
 }
 
-function generateMockProposals(): Proposal[] {
-  return [
-    {
-      id: "prop_001",
-      title: "Increase slash percentage from 5% to 10%",
-      type: "Parameter Change",
-      status: "active",
-      votesFor: 1250,
-      votesAgainst: 340,
-      createdAt: Date.now() - 2 * 24 * 60 * 60 * 1000,
-      deadline: Date.now() + 5 * 24 * 60 * 60 * 1000,
-    },
-    {
-      id: "prop_002",
-      title: "Upgrade Escrow.sol to v2.1 with automatic refund",
-      type: "Contract Upgrade",
-      status: "pending",
-      votesFor: 0,
-      votesAgainst: 0,
-      createdAt: Date.now() - 1 * 24 * 60 * 60 * 1000,
-      deadline: Date.now() + 7 * 24 * 60 * 60 * 1000,
-    },
-    {
-      id: "prop_003",
-      title: "Allocate 500 ETH for bug bounty program",
-      type: "Budget",
-      status: "passed",
-      votesFor: 2100,
-      votesAgainst: 150,
-      createdAt: Date.now() - 7 * 24 * 60 * 60 * 1000,
-      deadline: Date.now() - 2 * 24 * 60 * 60 * 1000,
-    },
-    {
-      id: "prop_004",
-      title: "Reduce heartbeat interval from 30s to 15s",
-      type: "Parameter Change",
-      status: "rejected",
-      votesFor: 890,
-      votesAgainst: 1200,
-      createdAt: Date.now() - 14 * 24 * 60 * 60 * 1000,
-      deadline: Date.now() - 7 * 24 * 60 * 60 * 1000,
-    },
-    {
-      id: "prop_005",
-      title: "Add new region: ap-south-1",
-      type: "Parameter Change",
-      status: "active",
-      votesFor: 1800,
-      votesAgainst: 200,
-      createdAt: Date.now() - 3 * 24 * 60 * 60 * 1000,
-      deadline: Date.now() + 4 * 24 * 60 * 60 * 1000,
-    },
-  ];
-}
-
-function formatRelativeTime(timestamp: number): string {
-  const diff = timestamp - Date.now();
+function formatRelativeTime(timestamp: string | number): string {
+  const ts = typeof timestamp === "string" ? new Date(timestamp).getTime() : timestamp;
+  const diff = ts - Date.now();
   if (diff < 0) return "Ended";
   if (diff < 60000) return "Ending soon";
   if (diff < 3600000) return `${Math.floor(diff / 60000)}m left`;
@@ -93,8 +40,9 @@ function formatRelativeTime(timestamp: number): string {
   return `${Math.floor(diff / 86400000)}d left`;
 }
 
-function formatDate(timestamp: number): string {
-  return new Date(timestamp).toLocaleDateString("en-US", {
+function formatDate(timestamp: string | number): string {
+  const ts = typeof timestamp === "string" ? timestamp : new Date(timestamp).toISOString();
+  return new Date(ts).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -139,10 +87,44 @@ export default function AdminGovernancePage() {
 }
 
 function AdminGovernanceContent() {
-  const [proposals] = React.useState<Proposal[]>(generateMockProposals());
+  const [proposals, setProposals] = React.useState<Proposal[] | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    adminListProposals()
+      .then(setProposals)
+      .catch((err) => setError(err.message));
+  }, []);
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-indicator-slashed">Failed to load proposals: {error}</p>
+      </div>
+    );
+  }
+
+  if (!proposals) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <div className="h-8 w-48 bg-bg-surface rounded animate-pulse" />
+            <div className="h-4 w-64 bg-bg-surface rounded animate-pulse mt-1" />
+          </div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-20 bg-bg-surface rounded animate-pulse" />
+          ))}
+        </div>
+        <div className="h-96 bg-bg-surface rounded animate-pulse" />
+      </div>
+    );
+  }
 
   const activeCount = proposals.filter((p) => p.status === "active").length;
-  const totalVotes = proposals.reduce((sum, p) => sum + p.votesFor + p.votesAgainst, 0);
+  const totalVotes = proposals.reduce((sum, p) => sum + p.votes_for + p.votes_against, 0);
 
   return (
     <div className="flex flex-col gap-4">
@@ -232,8 +214,8 @@ function AdminGovernanceContent() {
               <tbody className="divide-y divide-hairline">
                 {proposals.map((proposal) => {
                   const StatusIcon = statusConfig[proposal.status].icon;
-                  const totalVotes = proposal.votesFor + proposal.votesAgainst;
-                  const forPercent = totalVotes > 0 ? (proposal.votesFor / totalVotes) * 100 : 50;
+                  const totalVotes = proposal.votes_for + proposal.votes_against;
+                  const forPercent = totalVotes > 0 ? (proposal.votes_for / totalVotes) * 100 : 50;
                   return (
                     <tr key={proposal.id} className="hover:bg-bg-base/50 transition-colors">
                       <td className="px-4 py-3">
@@ -265,7 +247,7 @@ function AdminGovernanceContent() {
                         <div className="flex flex-col items-center">
                           <span className="text-xs font-mono-data text-indicator-active">
                             <ThumbsUp className="h-3 w-3 inline mr-1" />
-                            {proposal.votesFor.toLocaleString()}
+                            {proposal.votes_for.toLocaleString()}
                           </span>
                           <span className="text-[10px] text-foreground-muted">
                             ETH
@@ -276,7 +258,7 @@ function AdminGovernanceContent() {
                         <div className="flex flex-col items-center">
                           <span className="text-xs font-mono-data text-indicator-slashed">
                             <ThumbsDown className="h-3 w-3 inline mr-1" />
-                            {proposal.votesAgainst.toLocaleString()}
+                            {proposal.votes_against.toLocaleString()}
                           </span>
                           <span className="text-[10px] text-foreground-muted">
                             ETH
@@ -285,7 +267,7 @@ function AdminGovernanceContent() {
                       </td>
                       <td className="px-4 py-3">
                         <span className="text-xs text-foreground-muted">
-                          {formatDate(proposal.createdAt)}
+                          {formatDate(proposal.created_at)}
                         </span>
                       </td>
                       <td className="px-4 py-3">

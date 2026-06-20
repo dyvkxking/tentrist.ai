@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Cpu, Wallet, Key, CheckCircle2, Copy, Zap } from "lucide-react";
 import { OnboardingShell } from "@/components/onboarding/onboarding-shell";
 import { Button } from "@/components/ui/button";
-import { useAuthStore } from "@/stores/auth-store";
+import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
@@ -30,22 +30,38 @@ export default function OnboardingPage() {
   const [copied, setCopied] = React.useState(false);
   const [isCompleting, setIsCompleting] = React.useState(false);
 
-  const user = useAuthStore((s) => s.user);
+  const { user } = useAuth();
 
   async function handleGenerateKey() {
     if (!user) return;
     setIsGenerating(true);
     try {
-      const { data, error } = await supabase
+      // Generate a random API key
+      const rawKey = Array.from({ length: 32 }, () => Math.random().toString(36)[2]).join("");
+      const prefix = rawKey.slice(0, 8).toUpperCase();
+
+      // Hash the key for storage (in production, only the hash is stored server-side)
+      const encoder = new TextEncoder();
+      const data = encoder.encode(rawKey);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const keyHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+      const { data: result, error } = await supabase
         .from("api_keys")
-        .insert({ name: apiKeyName || "Default" })
+        .insert({
+          user_id: user.id,
+          name: apiKeyName || "Default",
+          key_hash: keyHash,
+          key_prefix: prefix,
+        })
         .select("id, key_prefix")
         .single();
 
       if (error) throw error;
-      // Display a fake full key for demo — in production the backend returns the unhashed key once
-      const fakeKey = `${data.key_prefix}_${Array.from({ length: 32 }, () => Math.random().toString(36)[2]).join("")}`;
-      setApiKey(fakeKey);
+      // Return full key to user (only shown once)
+      const fullKey = `${prefix}_${rawKey}`;
+      setApiKey(fullKey);
     } catch (err) {
       console.error("Failed to generate API key:", err);
     } finally {
@@ -64,12 +80,26 @@ export default function OnboardingPage() {
     if (!user) return;
     setIsLinking(true);
     try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
+      const challengeUrl = `${API_URL}/auth/wallet/challenge`;
+
+      // Debug logging
+      console.log("Wallet link - API URL:", API_URL);
+      console.log("Wallet link - Full URL:", challengeUrl);
+      console.log("Wallet link - User ID:", user.id);
+
       // Get nonce challenge from backend
-      const challengeRes = await fetch("/api/v1/auth/wallet/challenge", {
+      const challengeRes = await fetch(challengeUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: user.id }),
       });
+
+      if (!challengeRes.ok) {
+        const text = await challengeRes.text();
+        throw new Error(`HTTP ${challengeRes.status}: ${text}`);
+      }
+
       const { nonce, message } = await challengeRes.json();
 
       // Request signature from wallet (mock — would use wagmi/rainbowkit in production)
@@ -77,7 +107,7 @@ export default function OnboardingPage() {
       const mockWallet = "0x" + Array.from({ length: 40 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
       const mockSig = "0x" + Array.from({ length: 130 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
 
-      const verifyRes = await fetch("/api/v1/auth/wallet/verify", {
+      const verifyRes = await fetch(`${API_URL}/auth/wallet/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

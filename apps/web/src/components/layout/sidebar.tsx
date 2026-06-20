@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   ChevronLeft,
   ChevronRight,
@@ -16,10 +16,17 @@ import {
   Users,
   Zap,
   ChevronDown,
+  LogOut,
+  CreditCard,
+  Compass,
+  AlertTriangle,
+  FileText,
+  Vote,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { LiveIndicator } from "@/components/shared/live-indicator";
+import { useAuth } from "@/hooks/use-auth";
 
 interface NavItem {
   label: string;
@@ -55,6 +62,22 @@ const mainNavItems: NavItem[] = [
     href: "/wallet",
     icon: <Wallet className="h-4 w-4" />,
   },
+  {
+    label: "Billing",
+    href: "/billing",
+    icon: <CreditCard className="h-4 w-4" />,
+    children: [
+      { label: "Top Up", href: "/billing/topup", icon: <CreditCard className="h-4 w-4" /> },
+      { label: "Credits", href: "/billing/credits", icon: <CreditCard className="h-4 w-4" /> },
+      { label: "Transactions", href: "/billing/transactions", icon: <CreditCard className="h-4 w-4" /> },
+      { label: "Invoices", href: "/billing/invoices", icon: <FileText className="h-4 w-4" /> },
+    ],
+  },
+  {
+    label: "Explore",
+    href: "/explore",
+    icon: <Compass className="h-4 w-4" />,
+  },
 ];
 
 const secondaryNavItems: NavItem[] = [
@@ -68,7 +91,12 @@ const secondaryNavItems: NavItem[] = [
     href: "/admin",
     icon: <Shield className="h-4 w-4" />,
     children: [
+      { label: "Jobs", href: "/admin/jobs", icon: <Briefcase className="h-4 w-4" /> },
+      { label: "Nodes", href: "/admin/nodes", icon: <Server className="h-4 w-4" /> },
       { label: "Users", href: "/admin/users", icon: <Users className="h-4 w-4" /> },
+      { label: "Alerts", href: "/admin/alerts", icon: <AlertTriangle className="h-4 w-4" /> },
+      { label: "Contracts", href: "/admin/contracts", icon: <FileText className="h-4 w-4" /> },
+      { label: "Governance", href: "/admin/governance", icon: <Vote className="h-4 w-4" /> },
       { label: "Slashing", href: "/admin/slashing", icon: <Zap className="h-4 w-4" /> },
     ],
   },
@@ -86,6 +114,13 @@ export function Sidebar({
   className,
 }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    router.push("/");
+  };
 
   const toggleCollapsed = () => {
     onCollapsedChange?.(!collapsed);
@@ -162,8 +197,20 @@ export function Sidebar({
         </div>
       </nav>
 
-      {/* Footer with collapse toggle */}
-      <div className="border-t border-hairline p-2">
+      {/* Footer with collapse toggle + logout */}
+      <div className="border-t border-hairline p-2 space-y-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn(
+            "w-full justify-center text-indicator-slashed hover:text-indicator-slashed hover:bg-indicator-slashed/10",
+            !collapsed && "justify-start px-2"
+          )}
+          onClick={handleLogout}
+        >
+          <LogOut className="h-4 w-4 mr-2 shrink-0" />
+          {!collapsed && <span>Logout</span>}
+        </Button>
         <Button
           variant="ghost"
           size="sm"

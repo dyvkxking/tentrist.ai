@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gorilla/mux"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tentrist.ai/backend/internal/api/handlers"
 	"github.com/tentrist.ai/backend/internal/api/middleware"
@@ -28,6 +29,7 @@ func main() {
 	// Parse command line flags
 	port := flag.Int("port", 8080, "HTTP server port")
 	hardhatURL := flag.String("hardhat-url", "http://127.0.0.1:8545", "Hardhat node URL")
+	databaseURL := flag.String("database-url", "", "PostgreSQL connection string (e.g. postgres://user:pass@host:5432/db)")
 	supabaseURL := flag.String("supabase-url", "", "Supabase project URL")
 	supabaseKey := flag.String("supabase-key", "", "Supabase service role key")
 	flag.Parse()
@@ -65,11 +67,11 @@ func main() {
 	// Initialize contract client if connected
 	if ethClient != nil {
 		addrs := contract.ContractAddresses{
-			Escrow:           common.HexToAddress("0x5fbdb2315678afecb367f032d93f642f54180abc"),
-			SLAContract:      common.HexToAddress("0xe7f1725e7734ce288f8367e1bb2a07d5e1a1d1a9"),
-			SlashManager:     common.HexToAddress("0x9fE46736379c178d7c7488a1c0b4c7c1d7a1d1a9"),
-			ReputationLedger: common.HexToAddress("0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc"),
-			NodeRegistry:     common.HexToAddress("0x5b5d078dd54b0f9a1e3d8e1c4d8e1c4d8e1c4d8e"),
+			Escrow:           common.HexToAddress("0x5FbDB2315678afecb367f032d93F642f64180aa3"),
+			SLAContract:      common.HexToAddress("0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"),
+			SlashManager:     common.HexToAddress("0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"),
+			ReputationLedger: common.HexToAddress("0xCf7Ed3AccA5a467e9e704C703E8d87F634fB0Fc9"),
+			NodeRegistry:     common.HexToAddress("0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9"),
 		}
 		contractClient, err = contract.NewContractClient(ethClient, addrs)
 		if err != nil {
@@ -80,7 +82,7 @@ func main() {
 		}
 	}
 
-	// Initialize Supabase client
+	// Initialize Supabase client (used for auth.users writes)
 	var sbClient *supabase.Client
 	if *supabaseURL != "" && *supabaseKey != "" {
 		sbClient, err = supabase.NewClient(supabase.Config{
@@ -97,14 +99,34 @@ func main() {
 		log.Println("Supabase credentials not provided, database features disabled")
 	}
 
+	// Initialize PostgreSQL connection pool (pgx) for job/node persistence
+	var dbPool *pgxpool.Pool
+	if *databaseURL != "" {
+		dbPool, err = pgxpool.New(ctx, *databaseURL)
+		if err != nil {
+			log.Printf("Warning: Failed to create database pool: %v (continuing without DB)", err)
+			dbPool = nil
+		} else {
+			log.Println("PostgreSQL connection pool initialized")
+		}
+	} else {
+		log.Println("Database URL not provided, PostgreSQL features disabled")
+	}
+
 	// Initialize handlers with dependencies
 	jobHandler := handlers.NewJobHandler()
 	jobHandler.SetContractClient(contractClient)
 	jobHandler.SetSupabaseClient(sbClient)
+	if dbPool != nil {
+		jobHandler.SetDB(dbPool)
+	}
 
 	nodeHandler := handlers.NewNodeHandler()
 	nodeHandler.SetContractClient(contractClient)
 	nodeHandler.SetSupabaseClient(sbClient)
+	if dbPool != nil {
+		nodeHandler.SetDB(dbPool)
+	}
 
 	walletLinkHandler := handlers.NewWalletLinkHandler()
 	if sbClient != nil {
@@ -137,8 +159,74 @@ func main() {
 	api.HandleFunc("/auth/wallet/verify", walletLinkHandler.VerifyAndLink).Methods(http.MethodPost)
 	api.HandleFunc("/auth/wallet/{userId}", walletLinkHandler.GetLinkedWallet).Methods(http.MethodGet)
 
+	// Slash event ingestion endpoint - persists slashing events to DB
+	handleSlashEvent := func(w http.ResponseWriter, r *http.Request) {
+		var ev struct {
+			NodeAddress string `json:"nodeAddress"`
+			Amount     string `json:"amount"`
+			Reason     string `json:"reason"`
+			JobID      string `json:"jobId"`
+			Timestamp  int64  `json:"timestamp"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&ev); err != nil {
+			http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+			return
+		}
+		log.Printf("Slash event: node=%s amount=%s reason=%s job=%s",
+			ev.NodeAddress, ev.Amount, ev.Reason, ev.JobID)
+		if dbPool != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_, err := dbPool.Exec(ctx,
+				`INSERT INTO public.slashing_events (node_address, amount, reason, job_id, event_timestamp, created_at)
+				 VALUES ($1, $2, $3, $4, $5, NOW())`,
+				ev.NodeAddress, ev.Amount, ev.Reason, ev.JobID, ev.Timestamp,
+			)
+			if err != nil {
+				log.Printf("Warning: failed to insert slash event: %v", err)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"status":"ok"}`)
+	}
+	muxRouter.HandleFunc("/api/v1/telemetry/slash", handleSlashEvent).Methods(http.MethodPost)
+
 	// Telemetry heartbeat endpoint
-	muxRouter.HandleFunc("/api/v1/telemetry/heartbeat", handleHeartbeat).Methods(http.MethodPost)
+	handleHeartbeatWithDB := func(w http.ResponseWriter, r *http.Request) {
+		var hb struct {
+			NodeID          string `json:"nodeId"`
+			VRAMUsedMB      uint64 `json:"vramUsedMb"`
+			VRAMTotalMB     uint64 `json:"vramTotalMb"`
+			PacketLatencyMs uint64 `json:"packetLatencyMs"`
+			Timestamp       int64  `json:"timestamp"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&hb); err != nil {
+			http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		log.Printf("Heartbeat received from node %s: VRAM=%d/%d MB, latency=%d ms",
+			hb.NodeID, hb.VRAMUsedMB, hb.VRAMTotalMB, hb.PacketLatencyMs)
+
+		// Insert heartbeat into node_heartbeats table if db is available
+		if dbPool != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_, err := dbPool.Exec(ctx,
+				`INSERT INTO public.node_heartbeats (node_id, vram_used_mb, vram_total_mb, packet_latency_ms, timestamp, created_at)
+				 VALUES ($1, $2, $3, $4, $5, NOW())`,
+				hb.NodeID, hb.VRAMUsedMB, hb.VRAMTotalMB, hb.PacketLatencyMs, hb.Timestamp,
+			)
+			if err != nil {
+				log.Printf("Warning: failed to insert heartbeat: %v", err)
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"status":"ok","receivedAt":%d}`, time.Now().Unix())
+	}
+	muxRouter.HandleFunc("/api/v1/telemetry/heartbeat", handleHeartbeatWithDB).Methods(http.MethodPost)
 
 	// Health check
 	muxRouter.HandleFunc("/health", handleHealth).Methods(http.MethodGet)
@@ -164,33 +252,14 @@ func main() {
 	// Graceful shutdown with timeout
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	if dbPool != nil {
+		dbPool.Close()
+	}
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("Server shutdown error: %v", err)
 	}
 
 	log.Println("Server stopped")
-}
-
-// handleHeartbeat handles incoming heartbeat signals from telemetry nodes.
-func handleHeartbeat(w http.ResponseWriter, r *http.Request) {
-	var hb struct {
-		NodeID          string `json:"nodeId"`
-		VRAMUsedMB      uint64 `json:"vramUsedMb"`
-		VRAMTotalMB     uint64 `json:"vramTotalMb"`
-		PacketLatencyMs uint64 `json:"packetLatencyMs"`
-		Timestamp       int64  `json:"timestamp"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&hb); err != nil {
-		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
-		return
-	}
-
-	log.Printf("Heartbeat received from node %s: VRAM=%d/%d MB, latency=%d ms",
-		hb.NodeID, hb.VRAMUsedMB, hb.VRAMTotalMB, hb.PacketLatencyMs)
-
-	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"status":"ok","receivedAt":%d}`, time.Now().Unix())
 }
 
 // handleHealth returns server health status.

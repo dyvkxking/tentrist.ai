@@ -1,20 +1,22 @@
 "use client";
 
-import { useEffect, useCallback, useRef } from "react";
+import { useEffect, useCallback, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { User as SbUser } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
+import { useAuth as useAuthContext } from "@/components/providers/supabase-auth-provider";
 import {
   useAuthStore,
-  useUser,
-  useIsAuthenticated,
-  useAuthLoading,
-  useAuthError,
-  User,
+  useUserType,
+  signOut as authSignOut,
+  type User as LocalUser,
+  type UserRole,
 } from "@/stores/auth-store";
 
 // Route protection configuration
 interface ProtectedRoute {
   path: string;
-  roles?: User["role"][];
+  roles?: UserRole[];
   exact?: boolean;
 }
 
@@ -28,163 +30,210 @@ const PROTECTED_ROUTES: ProtectedRoute[] = [
   { path: "/dashboard/admin", roles: ["admin"] },
 ];
 
-const PUBLIC_ROUTES = ["/", "/login", "/signup"];
+const PUBLIC_ROUTES = [
+  "/",
+  "/login",
+  "/signup",
+  "/docs",
+  "/features",
+  "/pricing",
+  "/explore",
+  "/onboarding",
+];
 
-function isRouteProtected(pathname: string, protectedRoutes: ProtectedRoute[]): ProtectedRoute | null {
-  return protectedRoutes.find((route) => {
-    if (route.exact) {
-      return pathname === route.path;
-    }
-    return pathname.startsWith(route.path);
-  }) ?? null;
-}
-
-function isPublicRoute(pathname: string): boolean {
-  return PUBLIC_ROUTES.some((route) =>
-    route === "/" ? pathname === "/" : pathname.startsWith(route)
+function isRouteProtected(pathname: string): ProtectedRoute | null {
+  return (
+    PROTECTED_ROUTES.find((route) =>
+      route.exact ? pathname === route.path : pathname.startsWith(route.path)
+    ) ?? null
   );
 }
 
-// Hook: Auth lifecycle management
+function isPublicRoute(pathname: string): boolean {
+  return PUBLIC_ROUTES.some(
+    (route) =>
+      route === "/" ? pathname === "/" : pathname.startsWith(route)
+  );
+}
+
+// Maps Supabase auth user metadata to our internal User type
+function mapSbUser(sbUser: SbUser): LocalUser {
+  const meta = sbUser.user_metadata ?? {};
+  return {
+    id: sbUser.id,
+    email: sbUser.email ?? "",
+    name:
+      meta.display_name ||
+      meta.full_name ||
+      sbUser.email?.split("@")[0] ||
+      "User",
+    avatar: meta.avatar_url,
+    role: (meta.role as UserRole) ?? "member",
+    userType: (meta.user_type as "client" | "provider") ?? undefined,
+  };
+}
+
+// Hook: Main auth lifecycle — delegates to SupabaseAuthProvider context
 export function useAuth() {
   const router = useRouter();
   const pathname = usePathname();
 
-  const user = useUser();
-  const isAuthenticated = useIsAuthenticated();
-  const isLoading = useAuthLoading();
-  const error = useAuthError();
+  // Read session from context (single supabase subscription lives here)
+  const { user: rawSbUser, session, isLoading: ctxLoading, signOut: ctxSignOut } = useAuthContext();
 
-  const login = useAuthStore((state) => state.login);
-  const loginWithWallet = useAuthStore((state) => state.loginWithWallet);
-  const logout = useAuthStore((state) => state.logout);
-  const clearError = useAuthStore((state) => state.clearError);
-  const checkSession = useAuthStore((state) => state.checkSession);
-  const updateUser = useAuthStore((state) => state.updateUser);
+  // Local error state (Zustand for persistence across re-renders)
+  const [localError, setLocalError] = useState<string | null>(null);
+  const userType = useUserType();
+  const { setError: setStoreError, clearError: clearStoreError } = useAuthStore();
 
-  const initialized = useRef(false);
+  // Mapped user
+  const localUser: LocalUser | null = rawSbUser ? mapSbUser(rawSbUser) : null;
 
-  // Initialize session from stored token on mount
+  // Route protection — runs only when session state settles
   useEffect(() => {
-    if (!initialized.current) {
-      initialized.current = true;
-      // Session check happens automatically via persisted state
-      // In a real app, we'd validate the token with the server here
-      checkSession();
-    }
-  }, [checkSession]);
+    if (ctxLoading || isPublicRoute(pathname)) return;
 
-  // Route protection
-  useEffect(() => {
-    // Skip during loading or on public routes
-    if (isLoading || isPublicRoute(pathname)) {
+    const protectedRoute = isRouteProtected(pathname);
+
+    if (protectedRoute && !rawSbUser) {
+      router.push(`/login?returnUrl=${encodeURIComponent(pathname)}`);
       return;
     }
 
-    const protectedRoute = isRouteProtected(pathname, PROTECTED_ROUTES);
-
-    if (protectedRoute && !isAuthenticated) {
-      // Redirect to login with return URL
-      const returnUrl = encodeURIComponent(pathname);
-      router.push(`/login?returnUrl=${returnUrl}`);
-      return;
-    }
-
-    if (protectedRoute && user && protectedRoute.roles) {
-      // Check role-based access
-      if (!protectedRoute.roles.includes(user.role)) {
+    if (protectedRoute && rawSbUser && protectedRoute.roles) {
+      const role = (rawSbUser.user_metadata?.role as UserRole) ?? "member";
+      if (!protectedRoute.roles.includes(role)) {
         router.push("/dashboard");
       }
     }
-  }, [pathname, isAuthenticated, isLoading, user, router]);
+  }, [pathname, rawSbUser, ctxLoading, router]);
 
-  // Login handler
-  const handleLogin = useCallback(
+  const login = useCallback(
     async (email: string, password: string) => {
-      clearError();
-      await login(email, password);
+      clearStoreError();
+      const { error: sbError } = await supabase.auth.signInWithPassword({ email, password });
+      if (sbError) {
+        setLocalError(sbError.message);
+        setStoreError(sbError.message);
+      }
     },
-    [login, clearError]
+    [clearStoreError, setStoreError]
   );
 
-  // Wallet login handler
-  const handleLoginWithWallet = useCallback(
+  const loginWithWallet = useCallback(
     async (address: string) => {
-      clearError();
-      await loginWithWallet(address);
+      clearStoreError();
+      try {
+        if (typeof window === "undefined" || !window.ethereum) {
+          throw new Error("No wallet detected");
+        }
+
+        const challengeRes = await fetch("/api/v1/auth/wallet/challenge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ walletAddress: address }),
+        });
+        const { nonce, error: challengeErr } = await challengeRes.json();
+        if (challengeErr || !nonce) {
+          throw new Error(challengeErr || "Failed to get challenge");
+        }
+
+        const signature = (await window.ethereum.request({
+          method: "personal_sign",
+          params: [nonce, address],
+        })) as string;
+
+        const verifyRes = await fetch("/api/v1/auth/wallet/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ walletAddress: address, signature, nonce }),
+        });
+        const verifyData = await verifyRes.json();
+        if (!verifyRes.ok) {
+          throw new Error(verifyData.error || "Wallet verification failed");
+        }
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Wallet verification failed";
+        setLocalError(msg);
+        setStoreError(msg);
+      }
     },
-    [loginWithWallet, clearError]
+    [clearStoreError, setStoreError]
   );
 
-  // Logout handler
-  const handleLogout = useCallback(() => {
-    logout();
+  const logout = useCallback(async () => {
+    await authSignOut();
     router.push("/");
-  }, [logout, router]);
+  }, [router]);
 
-  // Check if user has required role
   const hasRole = useCallback(
-    (roles: User["role"][]) => {
-      if (!user) return false;
-      return roles.includes(user.role);
+    (roles: UserRole[]) => {
+      if (!localUser) return false;
+      return roles.includes(localUser.role);
     },
-    [user]
+    [localUser]
   );
 
-  // Check if user is admin
   const isAdmin = useCallback(() => {
-    return user?.role === "admin";
-  }, [user]);
+    return localUser?.role === "admin";
+  }, [localUser]);
+
+  const isAuthenticated = !!rawSbUser;
+
+  // Merge persisted userType from Zustand store into the exposed user
+  const user: LocalUser | null =
+    localUser && userType
+      ? { ...localUser, userType }
+      : localUser;
+
+  const clearError = useCallback(() => {
+    setLocalError(null);
+    clearStoreError();
+  }, [clearStoreError]);
 
   return {
-    // State
     user,
     isAuthenticated,
-    isLoading,
-    error,
-    // Actions
-    login: handleLogin,
-    loginWithWallet: handleLoginWithWallet,
-    logout: handleLogout,
+    isLoading: ctxLoading,
+    error: localError,
+    login,
+    loginWithWallet,
+    logout,
     clearError,
-    updateUser,
-
-    // Helpers
+    updateUser: (updates: Partial<LocalUser>) => {
+      // No-op: user is derived from Supabase session — updates go through Supabase metadata
+    },
     hasRole,
     isAdmin,
-    checkSession,
   };
 }
 
-// Hook: Protected route wrapper (for client components)
-export function useProtectedRoute(requiredRoles?: User["role"][]) {
+// Hook: Protected route wrapper
+export function useProtectedRoute(requiredRoles?: UserRole[]) {
   const { user, isAuthenticated, isLoading } = useAuth();
 
   const isAuthorized =
     !isLoading &&
     isAuthenticated &&
-    (!requiredRoles || (user && requiredRoles.includes(user.role)));
+    (!requiredRoles ||
+      (user && requiredRoles.includes(user.role)));
 
-  return {
-    isAuthorized,
-    isLoading,
-    user,
-  };
+  return { isAuthorized, isLoading, user };
 }
 
 // Hook: Auth redirect (redirects if already authenticated)
 export function useAuthRedirect() {
   const router = useRouter();
   const pathname = usePathname();
-  const isAuthenticated = useIsAuthenticated();
-  const isLoading = useAuthLoading();
+  const { isAuthenticated, isLoading } = useAuth();
   const initialized = useRef(false);
 
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
 
-    if (!isLoading && isAuthenticated && (pathname === "/login" || pathname === "/signup")) {
+    if (!isLoading && isAuthenticated &&
+      (pathname === "/login" || pathname === "/signup")) {
       router.push("/dashboard");
     }
   }, [isAuthenticated, isLoading, pathname, router]);
@@ -192,68 +241,38 @@ export function useAuthRedirect() {
   return { isLoading };
 }
 
-// Hook: Session timeout handling
-export function useSessionTimeout(timeoutMs: number = 30 * 60 * 1000) {
-  // 30 minutes default
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const isAuthenticated = useIsAuthenticated();
-  const logout = useAuthStore((state) => state.logout);
+// Hook: Session timeout
+export function useSessionTimeout(timeoutMs = 30 * 60 * 1000) {
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { isAuthenticated, logout } = useAuth();
 
   useEffect(() => {
     if (!isAuthenticated) {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
       return;
     }
 
     const resetTimeout = () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-      timeoutRef.current = setTimeout(() => {
-        logout();
-      }, timeoutMs);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(logout, timeoutMs);
     };
 
-    // Reset timeout on user activity
     const events = ["mousedown", "keydown", "scroll", "touchstart"];
-    events.forEach((event) => {
-      window.addEventListener(event, resetTimeout);
-    });
-
-    // Start initial timeout
+    events.forEach((e) => window.addEventListener(e, resetTimeout));
     resetTimeout();
 
     return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-      events.forEach((event) => {
-        window.removeEventListener(event, resetTimeout);
-      });
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      events.forEach((e) => window.removeEventListener(e, resetTimeout));
     };
   }, [isAuthenticated, timeoutMs, logout]);
 }
 
-// Hook: Initialize auth listeners (call once in root layout)
-export function useAuthInitialization() {
-  const router = useRouter();
-  const isAuthenticated = useIsAuthenticated();
-  const user = useUser();
-
-  // Handle browser back/forward navigation
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "tentrist-auth" && !e.newValue) {
-        // User logged out in another tab
-        router.push("/");
-      }
+declare global {
+  interface Window {
+    ethereum?: {
+      request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+      isMetaMask?: boolean;
     };
-
-    window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
-  }, [router]);
-
-  return { isAuthenticated, user };
+  }
 }

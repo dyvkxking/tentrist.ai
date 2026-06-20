@@ -38,45 +38,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PageHeader } from "@/components/shared/page-header";
-
-// Types
-interface Job {
-  id: string;
-  clientId: string;
-  status: "pending" | "running" | "completed" | "failed" | "requeued";
-  slaUptime: number;
-  slaThroughput: number;
-  deadline: Date;
-  assignedNodes: number;
-  progress: number;
-  cost: number;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-// Mock data generator
-function generateMockJobs(count: number = 25): Job[] {
-  const statuses: Job["status"][] = ["pending", "running", "completed", "failed", "requeued"];
-  const clients = ["nexus-ai", "renderfarm", "synthwave", "neuralforge", "deepscale"];
-
-  return Array.from({ length: count }, (_, i) => {
-    const status = statuses[Math.floor(Math.random() * statuses.length)];
-    const createdAt = new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000);
-    return {
-      id: `job_${Math.random().toString(36).slice(2, 12)}`,
-      clientId: clients[Math.floor(Math.random() * clients.length)],
-      status,
-      slaUptime: 95 + Math.random() * 5,
-      slaThroughput: 100 + Math.floor(Math.random() * 400),
-      deadline: new Date(createdAt.getTime() + 24 * 60 * 60 * 1000 * Math.random() * 7),
-      assignedNodes: Math.floor(Math.random() * 4) + 1,
-      progress: status === "completed" ? 100 : status === "failed" ? Math.floor(Math.random() * 50) : Math.floor(Math.random() * 100),
-      cost: Math.random() * 5,
-      createdAt,
-      updatedAt: new Date(createdAt.getTime() + Math.random() * 24 * 60 * 60 * 1000),
-    };
-  });
-}
+import { useJobs, type Job } from "@/hooks/use-jobs";
 
 // Status icons
 const statusIcons = {
@@ -164,7 +126,7 @@ function JobCard({ job }: { job: Job }) {
         <div className="grid grid-cols-3 gap-2 text-xs">
           <div className="flex flex-col gap-0.5">
             <span className="text-foreground-muted">SLA</span>
-            <span className="font-mono-data text-foreground">{job.slaUptime.toFixed(1)}%</span>
+            <span className="font-mono-data text-foreground">{(job as any).sla?.requiredUptime?.toFixed(1) || 95}%</span>
           </div>
           <div className="flex flex-col gap-0.5">
             <span className="text-foreground-muted">Nodes</span>
@@ -180,7 +142,7 @@ function JobCard({ job }: { job: Job }) {
         <div className="mt-3 pt-3 border-t border-hairline flex items-center justify-between">
           <div className="flex items-center gap-1 text-xs text-foreground-muted">
             <Clock className="h-3 w-3" />
-            <span>{formatRelativeTime(job.updatedAt)}</span>
+            <span>{formatRelativeTime(new Date(job.createdAt))}</span>
           </div>
           <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity">
             <MoreHorizontal className="h-4 w-4" />
@@ -258,7 +220,7 @@ function FilterPills({
 }
 
 export default function JobsPage() {
-  const [jobs] = React.useState<Job[]>(generateMockJobs(25));
+  const { data: jobs, isLoading } = useJobs();
   const [view, setView] = React.useState<"table" | "cards">("table");
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
@@ -267,13 +229,13 @@ export default function JobsPage() {
 
   // Filter jobs by status
   const filteredJobs = React.useMemo(() => {
+    if (!jobs) return [];
     if (statusFilter.length === 0) return jobs;
     return jobs.filter((job) => statusFilter.includes(job.status));
   }, [jobs, statusFilter]);
 
   // Column definitions
-  const columns: ColumnDef<Job>[] = React.useMemo(
-    () => [
+  const columns = React.useMemo<ColumnDef<any>[]>(() => [
       {
         accessorKey: "id",
         header: "Job ID",
@@ -356,11 +318,11 @@ export default function JobsPage() {
         enableSorting: true,
       },
       {
-        accessorKey: "updatedAt",
+        accessorKey: "createdAt",
         header: "Updated",
         cell: ({ row }) => (
           <span className="text-sm text-foreground-muted">
-            {formatRelativeTime(row.original.updatedAt)}
+            {formatRelativeTime(new Date(row.original.createdAt))}
           </span>
         ),
         enableSorting: true,
@@ -368,6 +330,7 @@ export default function JobsPage() {
     ],
     []
   );
+
 
   const table = useReactTable({
     data: filteredJobs,

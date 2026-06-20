@@ -43,17 +43,17 @@ function mapNode(sbNode: SupabaseNode): NodeProvider {
     status: (sbNode.status === "busy" || sbNode.status === "maintenance") ? "online" : sbNode.status,
     reputation: sbNode.reputation_score,
     tier: getReputationTier(sbNode.reputation_score),
-    stakeAmount: 0, // Not stored in nodes table
+    stakeAmount: sbNode.stake_amount ? Number(sbNode.stake_amount) / 1e18 : 0, // wei → ETH
     stakeCurrency: "ETH",
-    vramUsed: 0, // Not in node_heartbeats for this mapping
+    vramUsed: sbNode.vram_used_mb ?? 0,
     vramTotal: sbNode.vram_total_mb,
-    cpuCores: 0, // Not stored
+    cpuCores: sbNode.cpu_cores ?? 0,
     cpuModel: sbNode.gpu_model ?? "Unknown",
     region: sbNode.location ?? "Unknown",
-    uptime: 0, // Not calculated
+    uptime: sbNode.uptime_seconds ?? 0,
     lastHeartbeat: sbNode.last_heartbeat_at ? new Date(sbNode.last_heartbeat_at).getTime() : 0,
     totalJobsCompleted: sbNode.total_jobs_completed,
-    totalJobsFailed: 0, // Not stored
+    totalJobsFailed: sbNode.total_jobs_failed ?? 0,
     createdAt: new Date(sbNode.created_at).getTime(),
   };
 }

@@ -20,78 +20,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { RequireAuth } from "@/components/providers/require-auth";
+import { adminListAlerts } from "@/lib/supabase-admin";
 
 interface Alert {
   id: string;
   type: "Heartbeat Anomaly" | "SLA Breach" | "Unusual Activity" | "Slash Event";
   severity: "Critical" | "Warning" | "Info";
-  nodeId?: string;
-  jobId?: string;
+  node_id?: string;
+  job_id?: string;
   message: string;
-  triggeredAt: number;
+  created_at: string;
   status: "open" | "acknowledged" | "resolved";
-}
-
-function generateMockAlerts(): Alert[] {
-  return [
-    {
-      id: "alert_001",
-      type: "Heartbeat Anomaly",
-      severity: "Critical",
-      nodeId: "node_003",
-      message: "Node missed 5 consecutive heartbeat intervals",
-      triggeredAt: Date.now() - 5 * 60 * 1000,
-      status: "open",
-    },
-    {
-      id: "alert_002",
-      type: "SLA Breach",
-      severity: "Critical",
-      nodeId: "node_0203",
-      jobId: "job_i9j0k1l2",
-      message: "Uptime dropped to 87.3% below 95% threshold",
-      triggeredAt: Date.now() - 30 * 60 * 1000,
-      status: "open",
-    },
-    {
-      id: "alert_003",
-      type: "Slash Event",
-      severity: "Warning",
-      nodeId: "node_0087",
-      jobId: "job_a1b2c3d4",
-      message: "Slash event initiated: 0.45 ETH at risk",
-      triggeredAt: Date.now() - 2 * 60 * 60 * 1000,
-      status: "acknowledged",
-    },
-    {
-      id: "alert_004",
-      type: "Unusual Activity",
-      severity: "Info",
-      nodeId: "node_0142",
-      message: "Unusual VRAM usage pattern detected: 95% sustained for 10 minutes",
-      triggeredAt: Date.now() - 4 * 60 * 60 * 1000,
-      status: "resolved",
-    },
-    {
-      id: "alert_005",
-      type: "Heartbeat Anomaly",
-      severity: "Warning",
-      nodeId: "node_0056",
-      message: "Elevated latency detected: avg 350ms",
-      triggeredAt: Date.now() - 6 * 60 * 60 * 1000,
-      status: "open",
-    },
-    {
-      id: "alert_006",
-      type: "SLA Breach",
-      severity: "Warning",
-      nodeId: "node_0099",
-      jobId: "job_q7r8s9t0",
-      message: "Throughput at 78% of required threshold",
-      triggeredAt: Date.now() - 12 * 60 * 60 * 1000,
-      status: "resolved",
-    },
-  ];
 }
 
 function formatRelativeTime(timestamp: number): string {
@@ -139,17 +78,70 @@ export default function AdminAlertsPage() {
 }
 
 function AdminAlertsContent() {
-  const [alerts] = React.useState<Alert[]>(generateMockAlerts());
+  const [alerts, setAlerts] = React.useState<Alert[] | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [severityFilter, setSeverityFilter] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    adminListAlerts()
+      .then(setAlerts)
+      .catch((err) => setError(err.message));
+  }, []);
+
+  if (error) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="p-4 rounded-lg border border-indicator-slashed/30 bg-indicator-slashed/10 text-indicator-slashed text-sm">
+          Failed to load alerts: {error}
+        </div>
+      </div>
+    );
+  }
+
+  if (!alerts) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <div className="h-8 w-48 animate-pulse rounded-md bg-bg-surface" />
+            <div className="h-4 w-64 animate-pulse rounded-md bg-bg-surface" />
+          </div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i} className="bg-bg-surface/80">
+              <CardContent className="p-4">
+                <div className="h-8 w-12 animate-pulse rounded-md bg-bg-surface" />
+                <div className="mt-2 h-3 w-20 animate-pulse rounded-md bg-bg-surface" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card className="bg-bg-surface/80">
+          <CardContent className="p-0">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="flex items-start gap-4 p-4 border-b border-hairline">
+                <div className="h-8 w-8 animate-pulse rounded-lg bg-bg-surface" />
+                <div className="flex-1">
+                  <div className="h-4 w-32 animate-pulse rounded-md bg-bg-surface" />
+                  <div className="mt-2 h-3 w-48 animate-pulse rounded-md bg-bg-surface" />
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const filteredAlerts = alerts.filter((alert) => {
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       if (
         !alert.id.toLowerCase().includes(query) &&
-        !alert.nodeId?.toLowerCase().includes(query) &&
-        !alert.jobId?.toLowerCase().includes(query) &&
+        !alert.node_id?.toLowerCase().includes(query) &&
+        !alert.job_id?.toLowerCase().includes(query) &&
         !alert.message.toLowerCase().includes(query)
       ) {
         return false;
@@ -275,23 +267,23 @@ function AdminAlertsContent() {
                     </div>
                     <p className="text-sm text-foreground mb-1">{alert.message}</p>
                     <div className="flex items-center gap-4 text-xs text-foreground-muted">
-                      {alert.nodeId && (
-                        <Link href={`/admin/nodes/${alert.nodeId}`}>
+                      {alert.node_id && (
+                        <Link href={`/admin/nodes/${alert.node_id}`}>
                           <span className="text-indicator-active hover:underline">
-                            {alert.nodeId}
+                            {alert.node_id}
                           </span>
                         </Link>
                       )}
-                      {alert.jobId && (
-                        <Link href={`/admin/jobs/${alert.jobId}`}>
+                      {alert.job_id && (
+                        <Link href={`/admin/jobs/${alert.job_id}`}>
                           <span className="text-indicator-active hover:underline">
-                            {alert.jobId}
+                            {alert.job_id}
                           </span>
                         </Link>
                       )}
                       <span className="flex items-center gap-1">
                         <Clock className="h-3 w-3" />
-                        {formatRelativeTime(alert.triggeredAt)}
+                        {formatRelativeTime(new Date(alert.created_at).getTime())}
                       </span>
                     </div>
                   </div>

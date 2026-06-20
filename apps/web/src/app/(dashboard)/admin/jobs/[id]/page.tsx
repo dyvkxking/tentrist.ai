@@ -21,66 +21,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { RequireAuth } from "@/components/providers/require-auth";
-
-interface Checkpoint {
-  id: string;
-  timestamp: number;
-  nodeId: string;
-  dataHash: string;
-  status: "saved" | "restored" | "failed";
-}
-
-interface EventLogEntry {
-  timestamp: number;
-  type: "created" | "assigned" | "checkpoint" | "slash" | "complete" | "fail";
-  message: string;
-  details?: string;
-}
-
-interface NodeAssignment {
-  nodeId: string;
-  address: string;
-  status: "assigned" | "active" | "failed" | "completed";
-  joinedAt: number;
-}
-
-function generateMockJobDetail(id: string) {
-  return {
-    id,
-    clientAddress: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
-    status: "running" as const,
-    nodes: 4,
-    value: 2.5,
-    createdAt: Date.now() - 3600000,
-    startedAt: Date.now() - 3500000,
-    estimatedCompletion: Date.now() + 86400000,
-    sla: {
-      uptime: 95,
-      throughput: 100,
-      deadline: Date.now() + 86400000,
-      checkpointsRequired: 4,
-      maxLatency: 200,
-    },
-    assignedNodes: [
-      { nodeId: "node_001", address: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F", status: "active" as const, joinedAt: Date.now() - 3500000 },
-      { nodeId: "node_002", address: "0x862964cE01621d2F447D1A4d5d7dE0286FA8918f", status: "active" as const, joinedAt: Date.now() - 3400000 },
-      { nodeId: "node_003", address: "0x3d9dCB725C5B078cC8d2E8a4f4C7bD9e5f6a8b7c", status: "failed" as const, joinedAt: Date.now() - 3300000 },
-      { nodeId: "node_004", address: "0xfedc0987654321abcdef0123456789abcdef0123", status: "assigned" as const, joinedAt: Date.now() - 100000 },
-    ] as NodeAssignment[],
-    checkpoints: [
-      { id: "cp_001", timestamp: Date.now() - 1800000, nodeId: "node_001", dataHash: "0xabc123...def456", status: "saved" as const },
-      { id: "cp_002", timestamp: Date.now() - 900000, nodeId: "node_002", dataHash: "0xdef789...ghi012", status: "saved" as const },
-    ] as Checkpoint[],
-    eventLog: [
-      { timestamp: Date.now() - 3600000, type: "created" as const, message: "Job created", details: "SLA terms recorded on-chain" },
-      { timestamp: Date.now() - 3500000, type: "assigned" as const, message: "Node node_001 assigned" },
-      { timestamp: Date.now() - 3400000, type: "assigned" as const, message: "Node node_002 assigned" },
-      { timestamp: Date.now() - 3300000, type: "slash" as const, message: "Node node_003 failed - SLA breach", details: "Missed heartbeat intervals" },
-      { timestamp: Date.now() - 1800000, type: "checkpoint" as const, message: "Checkpoint cp_001 saved" },
-      { timestamp: Date.now() - 900000, type: "checkpoint" as const, message: "Checkpoint cp_002 saved" },
-    ] as EventLogEntry[],
-  };
-}
+import { adminGetJob } from "@/lib/supabase-admin";
+import type { NodeAssignment } from "@/hooks/use-jobs";
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString("en-US", {
@@ -124,7 +66,43 @@ interface AdminJobDetailContentProps {
 }
 
 function AdminJobDetailContent({ jobId }: AdminJobDetailContentProps) {
-  const job = generateMockJobDetail(jobId);
+  const [job, setJob] = React.useState<any | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    adminGetJob(jobId).then((data) => {
+      setJob(data);
+    }).catch((e) => {
+      setError(e.message);
+    });
+  }, [jobId]);
+
+  if (error) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Card className="bg-bg-surface/80 p-8 text-center">
+          <p className="text-indicator-slashed">Error loading job: {error}</p>
+        </Card>
+      </div>
+    );
+  }
+
+  if (job === null) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Loading...</h1>
+          </div>
+        </div>
+        <Card className="bg-bg-surface/80">
+          <CardContent className="p-8 text-center">
+            <div className="animate-pulse text-foreground-muted">Loading job details...</div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -146,7 +124,7 @@ function AdminJobDetailContent({ jobId }: AdminJobDetailContentProps) {
             <div className="flex items-center gap-2 text-sm text-foreground-muted">
               <User className="h-4 w-4" />
               <span className="font-mono-data">
-                Client: {job.clientAddress}
+                Client: {job.user_id}
               </span>
             </div>
           </div>
@@ -166,7 +144,7 @@ function AdminJobDetailContent({ jobId }: AdminJobDetailContentProps) {
               <span className="text-xs text-foreground-muted">Value</span>
             </div>
             <div className="text-lg font-semibold font-mono-data text-indicator-active">
-              {job.value.toFixed(2)} ETH
+              {(job.budget_usd || 0).toFixed(2)} USD
             </div>
           </CardContent>
         </Card>
@@ -177,7 +155,7 @@ function AdminJobDetailContent({ jobId }: AdminJobDetailContentProps) {
               <span className="text-xs text-foreground-muted">Nodes</span>
             </div>
             <div className="text-lg font-semibold font-mono-data">
-              {job.assignedNodes.filter(n => n.status === "active" || n.status === "assigned").length} / {job.nodes}
+              {job.node_id ? 1 : 0}
             </div>
           </CardContent>
         </Card>
@@ -188,7 +166,7 @@ function AdminJobDetailContent({ jobId }: AdminJobDetailContentProps) {
               <span className="text-xs text-foreground-muted">Created</span>
             </div>
             <div className="text-sm font-medium text-foreground">
-              {formatRelativeTime(job.createdAt)}
+              {formatRelativeTime(job.created_at ? new Date(job.created_at).getTime() : Date.now())}
             </div>
           </CardContent>
         </Card>
@@ -199,7 +177,7 @@ function AdminJobDetailContent({ jobId }: AdminJobDetailContentProps) {
               <span className="text-xs text-foreground-muted">Deadline</span>
             </div>
             <div className="text-sm font-medium text-foreground">
-              {formatRelativeTime(job.sla.deadline)}
+              {formatRelativeTime(job.deadline ? new Date(job.deadline).getTime() : Date.now() + 86400000)}
             </div>
           </CardContent>
         </Card>
@@ -218,19 +196,19 @@ function AdminJobDetailContent({ jobId }: AdminJobDetailContentProps) {
           <div className="grid gap-4 md:grid-cols-4">
             <div className="p-3 bg-bg-base rounded-lg">
               <div className="text-xs text-foreground-muted mb-1">Required Uptime</div>
-              <div className="text-lg font-mono-data text-indicator-active">{job.sla.uptime}%</div>
+              <div className="text-lg font-mono-data text-indicator-active">{job.sla_uptime_required || 95}%</div>
             </div>
             <div className="p-3 bg-bg-base rounded-lg">
               <div className="text-xs text-foreground-muted mb-1">Required Throughput</div>
-              <div className="text-lg font-mono-data text-indicator-active">{job.sla.throughput}</div>
+              <div className="text-lg font-mono-data text-indicator-active">{job.sla_throughput_required || 100}</div>
             </div>
             <div className="p-3 bg-bg-base rounded-lg">
               <div className="text-xs text-foreground-muted mb-1">Checkpoints Required</div>
-              <div className="text-lg font-mono-data text-indicator-active">{job.sla.checkpointsRequired}</div>
+              <div className="text-lg font-mono-data text-indicator-active">-</div>
             </div>
             <div className="p-3 bg-bg-base rounded-lg">
               <div className="text-xs text-foreground-muted mb-1">Max Latency</div>
-              <div className="text-lg font-mono-data text-indicator-active">{job.sla.maxLatency}ms</div>
+              <div className="text-lg font-mono-data text-indicator-active">-</div>
             </div>
           </div>
         </CardContent>
@@ -264,7 +242,7 @@ function AdminJobDetailContent({ jobId }: AdminJobDetailContentProps) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-hairline">
-                {job.assignedNodes.map((node) => (
+                {(job.assignedNodes || []).map((node: any) => (
                   <tr key={node.nodeId} className="hover:bg-bg-base/50 transition-colors">
                     <td className="px-4 py-3">
                       <Link href={`/admin/nodes/${node.nodeId}`}>
@@ -275,18 +253,18 @@ function AdminJobDetailContent({ jobId }: AdminJobDetailContentProps) {
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-xs font-mono-data text-foreground-muted">
-                        {node.address.slice(0, 8)}...{node.address.slice(-6)}
+                        {(node.address || "").slice(0, 8)}...{(node.address || "").slice(-6)}
                       </span>
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge
-                        status={node.status === "active" ? "online" : node.status === "failed" ? "failed" : "pending"}
+                        status={node.status === "processing" ? "online" : node.status === "failed" ? "failed" : node.status === "completed" ? "completed" : "pending"}
                         size="sm"
                       />
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-xs text-foreground-muted">
-                        {formatRelativeTime(node.joinedAt)}
+                        {node.joinedAt ? formatRelativeTime(node.joinedAt) : "-"}
                       </span>
                     </td>
                   </tr>
@@ -329,7 +307,7 @@ function AdminJobDetailContent({ jobId }: AdminJobDetailContentProps) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-hairline">
-                  {job.checkpoints.map((cp) => (
+                  {(job.checkpoints || []).map((cp: any) => (
                     <tr key={cp.id} className="hover:bg-bg-base/50 transition-colors">
                       <td className="px-4 py-3">
                         <span className="text-xs font-mono-data text-foreground">
@@ -386,9 +364,10 @@ function AdminJobDetailContent({ jobId }: AdminJobDetailContentProps) {
         </CardHeader>
         <CardContent className="p-0">
           <div className="divide-y divide-hairline">
-            {job.eventLog.map((event, index) => {
-              const EventIcon = eventTypeConfig[event.type].icon;
-              const EventColor = eventTypeConfig[event.type].color;
+            {(job.eventLog || []).map((event: any, index: number) => {
+              const eventType = event.type as keyof typeof eventTypeConfig;
+              const EventIcon = eventTypeConfig[eventType]?.icon || FileText;
+              const EventColor = eventTypeConfig[eventType]?.color || "text-foreground-muted";
               return (
                 <div key={index} className="flex items-start gap-3 p-4 hover:bg-bg-base/50 transition-colors">
                   <div className={cn("p-1.5 bg-bg-base rounded", EventColor)}>

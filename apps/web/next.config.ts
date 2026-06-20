@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Performance optimizations applied via providers
 };
 
 export default nextConfig;

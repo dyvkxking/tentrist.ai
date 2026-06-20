@@ -1,8 +1,8 @@
 "use client";
 
-import { Web3Providers } from "./web3-providers";
 import { ThemeProvider } from "./theme-provider";
 import { SupabaseAuthProvider } from "./supabase-auth-provider";
+import { Web3Providers } from "./web3-providers";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (

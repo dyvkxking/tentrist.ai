@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { RequireAuth } from "@/components/providers/require-auth";
+import { adminGetAlert } from "@/lib/supabase-admin";
 
 type AlertStatus = "triggered" | "acknowledged" | "resolved" | "open";
 
@@ -28,31 +29,6 @@ interface TimelineEntry {
   timestamp: number;
   status: AlertStatus;
   note?: string;
-}
-
-function generateMockAlertDetail(id: string) {
-  return {
-    id,
-    type: "Heartbeat Anomaly" as const,
-    severity: "Critical" as const,
-    nodeId: "node_003",
-    jobId: "job_a1b2c3d4",
-    message: "Node missed 5 consecutive heartbeat intervals",
-    triggeredAt: Date.now() - 5 * 60 * 1000,
-    status: "open" as AlertStatus,
-    timeline: [
-      { timestamp: Date.now() - 5 * 60 * 1000, status: "triggered", note: "Alert triggered by anomaly detection" },
-    ] as TimelineEntry[],
-    nodeInfo: {
-      id: "node_003",
-      gpu: "NVIDIA A100 40GB",
-      region: "ap-southeast-1",
-      operator: "0x3d9dCB725C5B078cC8d2E8a4f4C7bD9e5f6a8b7c",
-      reputation: 45,
-      stake: 5.0,
-    },
-    adminNotes: "",
-  };
 }
 
 function formatDate(timestamp: number): string {
@@ -117,10 +93,66 @@ interface AdminAlertDetailContentProps {
 }
 
 function AdminAlertDetailContent({ alertId }: AdminAlertDetailContentProps) {
-  const alert = generateMockAlertDetail(alertId);
-  const [adminNotes, setAdminNotes] = React.useState(alert.adminNotes);
-  const SeverityIcon = severityConfig[alert.severity].icon;
-  const TypeIcon = typeIcons[alert.type];
+  const [alert, setAlert] = React.useState<Record<string, any> | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [adminNotes, setAdminNotes] = React.useState("");
+
+  React.useEffect(() => {
+    adminGetAlert(alertId)
+      .then(setAlert)
+      .catch((err) => setError(err.message));
+  }, [alertId]);
+
+  if (error) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="p-4 rounded-lg border border-indicator-slashed/30 bg-indicator-slashed/10 text-indicator-slashed text-sm">
+          Failed to load alert: {error}
+        </div>
+      </div>
+    );
+  }
+
+  if (!alert) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-4">
+            <div className="h-8 w-8 animate-pulse rounded-md bg-bg-surface" />
+            <div className="flex flex-col gap-2">
+              <div className="h-8 w-48 animate-pulse rounded-md bg-bg-surface" />
+              <div className="h-4 w-32 animate-pulse rounded-md bg-bg-surface" />
+            </div>
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card className="bg-bg-surface/80">
+            <CardContent className="p-4">
+              <div className="h-6 w-32 animate-pulse rounded-md bg-bg-surface" />
+              <div className="mt-4 space-y-3">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="h-4 w-full animate-pulse rounded-md bg-bg-surface" />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-bg-surface/80">
+            <CardContent className="p-4">
+              <div className="h-6 w-32 animate-pulse rounded-md bg-bg-surface" />
+              <div className="mt-4 space-y-3">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="h-4 w-full animate-pulse rounded-md bg-bg-surface" />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  const SeverityIcon = severityConfig[alert.severity as keyof typeof severityConfig]?.icon || AlertTriangle;
+  const TypeIcon = typeIcons[alert.type as keyof typeof typeIcons] || Server;
 
   return (
     <div className="flex flex-col gap-4">
@@ -137,7 +169,7 @@ function AdminAlertDetailContent({ alertId }: AdminAlertDetailContentProps) {
               <h1 className="text-2xl font-semibold tracking-tight text-foreground">
                 {alert.id}
               </h1>
-              <Badge className={cn("text-xs", severityConfig[alert.severity].color)}>
+              <Badge className={cn("text-xs", severityConfig[alert.severity as keyof typeof severityConfig]?.color || "bg-indicator-slashed/10 text-indicator-slashed border-indicator-slashed/30")}>
                 <SeverityIcon className="h-3 w-3 mr-1" />
                 {alert.severity}
               </Badge>
@@ -146,7 +178,7 @@ function AdminAlertDetailContent({ alertId }: AdminAlertDetailContentProps) {
               </Badge>
             </div>
             <p className="text-sm text-foreground-muted">
-              Triggered {formatRelativeTime(alert.triggeredAt)}
+              Triggered {formatRelativeTime(new Date(alert.created_at).getTime())}
             </p>
           </div>
         </div>
@@ -175,7 +207,7 @@ function AdminAlertDetailContent({ alertId }: AdminAlertDetailContentProps) {
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-foreground-muted">Severity</span>
-                <Badge className={severityConfig[alert.severity].color} size="sm">
+                <Badge className={severityConfig[alert.severity as keyof typeof severityConfig]?.color || "bg-indicator-slashed/10 text-indicator-slashed border-indicator-slashed/30"} size="sm">
                   {alert.severity}
                 </Badge>
               </div>
@@ -185,7 +217,7 @@ function AdminAlertDetailContent({ alertId }: AdminAlertDetailContentProps) {
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-foreground-muted">Triggered</span>
-                <span className="text-foreground">{formatDate(alert.triggeredAt)}</span>
+                <span className="text-foreground">{formatDate(new Date(alert.created_at).getTime())}</span>
               </div>
             </div>
 
@@ -207,46 +239,36 @@ function AdminAlertDetailContent({ alertId }: AdminAlertDetailContentProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {alert.nodeId && (
+            {alert.node_id && (
               <div>
                 <div className="text-xs text-foreground-muted mb-1">Node</div>
                 <div className="flex items-center justify-between">
-                  <Link href={`/admin/nodes/${alert.nodeId}`}>
+                  <Link href={`/admin/nodes/${alert.node_id}`}>
                     <span className="text-sm font-mono-data text-indicator-active hover:underline cursor-pointer">
-                      {alert.nodeId}
+                      {alert.node_id}
                     </span>
                   </Link>
                   <Badge variant="outline" size="sm">
-                    {alert.nodeInfo.gpu}
+                    {alert.node_id}
                   </Badge>
-                </div>
-                <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <span className="text-foreground-muted">Region:</span>
-                    <span className="ml-1 text-foreground">{alert.nodeInfo.region}</span>
-                  </div>
-                  <div>
-                    <span className="text-foreground-muted">Stake:</span>
-                    <span className="ml-1 font-mono-data">{alert.nodeInfo.stake.toFixed(1)} ETH</span>
-                  </div>
                 </div>
               </div>
             )}
 
-            {alert.jobId && (
+            {alert.job_id && (
               <div className="pt-3 border-t border-hairline">
                 <div className="text-xs text-foreground-muted mb-1">Job</div>
                 <div className="flex items-center justify-between">
-                  <Link href={`/admin/jobs/${alert.jobId}`}>
+                  <Link href={`/admin/jobs/${alert.job_id}`}>
                     <span className="text-sm font-mono-data text-indicator-active hover:underline cursor-pointer">
-                      {alert.jobId}
+                      {alert.job_id}
                     </span>
                   </Link>
                 </div>
               </div>
             )}
 
-            {!alert.nodeId && !alert.jobId && (
+            {!alert.node_id && !alert.job_id && (
               <div className="text-sm text-foreground-muted text-center py-4">
                 No node or job associated with this alert
               </div>
@@ -265,22 +287,22 @@ function AdminAlertDetailContent({ alertId }: AdminAlertDetailContentProps) {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {alert.timeline.map((entry, index) => {
-              const TimelineIcon = timelineConfig[entry.status].icon;
+            {(alert.timeline || []).map((entry: TimelineEntry, index: number) => {
+              const TimelineIcon = timelineConfig[entry.status as AlertStatus]?.icon || AlertTriangle;
               return (
                 <div key={index} className="flex items-start gap-3">
                   <div className="flex flex-col items-center">
-                    <div className={cn("p-1.5 rounded-full", timelineConfig[entry.status].color)}>
+                    <div className={cn("p-1.5 rounded-full", timelineConfig[entry.status as AlertStatus]?.color || "bg-indicator-slashed")}>
                       <TimelineIcon className="h-3 w-3 text-bg-base" />
                     </div>
-                    {index < alert.timeline.length - 1 && (
+                    {index < (alert.timeline?.length || 0) - 1 && (
                       <div className="w-px h-8 bg-hairline mt-2" />
                     )}
                   </div>
                   <div className="flex-1 pt-0.5">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium text-foreground">
-                        {timelineConfig[entry.status].label}
+                        {timelineConfig[entry.status as AlertStatus]?.label || entry.status}
                       </span>
                       <span className="text-xs text-foreground-muted">
                         {formatDate(entry.timestamp)}

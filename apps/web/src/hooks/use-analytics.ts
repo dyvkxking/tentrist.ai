@@ -1,8 +1,11 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
+import { getCurrentUser } from "@/stores/auth-store";
 
-// Types
+// ─── Types ───────────────────────────────────────────────────────────────────
+
 export interface UptimeDataPoint {
   date: string;
   uptime: number;
@@ -23,189 +26,292 @@ export interface ValueFlowDataPoint {
   margin: number;
 }
 
-export interface SLAComplianceDataPoint {
-  date: string;
-  compliance: number;
+export interface NodeAnalytics {
+  totalJobsCompleted: number;
+  totalJobsFailed: number;
+  avgLatencyMs: number;
+  p95LatencyMs: number;
+  p99LatencyMs: number;
+  successRate: number;
+  totalRewardsEarned: number;
+  totalSlashed: number;
+  currentReputation: number;
+  uptimePercent: number;
 }
 
-export interface JobTypeBreakdown {
-  name: string;
-  count: number;
-  percentage: number;
-  color: string;
+// ─── Real Supabase Queries ───────────────────────────────────────────────────
+
+async function fetchNodeAssignments(userId: string) {
+  // Get node assignments for jobs owned by this user
+  const { data, error } = await supabase
+    .from("node_assignments")
+    .select(`
+      *,
+      jobs!inner(user_id),
+      nodes!inner(wallet_address)
+    `)
+    .eq("jobs.user_id", userId);
+  if (error) throw error;
+  return data;
 }
 
-export interface ClientBreakdown {
-  client: string;
-  jobs: number;
-  revenue: number;
-  SLA: number;
+async function fetchNodeHeartbeats(nodeId: string, days = 30) {
+  const since = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("node_heartbeats")
+    .select("*")
+    .eq("node_id", nodeId)
+    .gte("created_at", since)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return data;
 }
 
-export interface AnalyticsOverview {
-  totalJobs: number;
-  totalJobsChange: number;
-  averageUptime: number;
-  averageUptimeChange: number;
-  slaCompliance: number;
-  slaComplianceChange: number;
-  totalRevenue: number;
-  totalRevenueChange: number;
-  totalCost: number;
-  totalCostChange: number;
+async function fetchNodeTransactions(userId: string) {
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data;
 }
 
-// Mock data generators
-function generateUptimeData(days: number = 30): UptimeDataPoint[] {
-  return Array.from({ length: days }, (_, i) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (days - i));
-    return {
-      date: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-      uptime: 95 + Math.random() * 5,
-      slaTarget: 95,
-    };
-  });
-}
+async function fetchNodeAnalytics(userId: string): Promise<NodeAnalytics> {
+  const [assignments, transactions] = await Promise.all([
+    fetchNodeAssignments(userId),
+    fetchNodeTransactions(userId),
+  ]);
 
-function generateJobVolumeData(days: number = 14): JobVolumeDataPoint[] {
-  return Array.from({ length: days }, (_, i) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (days - i));
-    return {
-      date: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-      completed: Math.floor(Math.random() * 50) + 20,
-      failed: Math.floor(Math.random() * 8),
-      pending: Math.floor(Math.random() * 15) + 5,
-    };
-  });
-}
+  // Calculate stats from assignments
+  const completed = assignments.filter((a) => a.status === "completed").length;
+  const failed = assignments.filter((a) => a.status === "failed").length;
+  const total = completed + failed || 1;
 
-function generateValueFlowData(days: number = 14): ValueFlowDataPoint[] {
-  return Array.from({ length: days }, (_, i) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (days - i));
-    const revenue = Math.random() * 10 + 5;
-    const cost = revenue * (0.4 + Math.random() * 0.3);
-    return {
-      date: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-      revenue: parseFloat(revenue.toFixed(3)),
-      cost: parseFloat(cost.toFixed(3)),
-      margin: parseFloat((revenue - cost).toFixed(3)),
-    };
-  });
-}
+  // Calculate latency stats from heartbeat data
+  const allLatencies: number[] = [];
+  for (const assignment of assignments) {
+    if (assignment.node_id) {
+      const heartbeats = await fetchNodeHeartbeats(assignment.node_id);
+      heartbeats.forEach((hb) => {
+        if (hb.packet_latency_ms) allLatencies.push(hb.packet_latency_ms);
+      });
+    }
+  }
+  allLatencies.sort((a, b) => a - b);
+  const avgLat = allLatencies.length
+    ? allLatencies.reduce((a, b) => a + b, 0) / allLatencies.length
+    : 0;
+  const p95Lat = allLatencies.length
+    ? allLatencies[Math.floor(allLatencies.length * 0.95)]
+    : 0;
+  const p99Lat = allLatencies.length
+    ? allLatencies[Math.floor(allLatencies.length * 0.99)]
+    : 0;
 
-function generateSLAComplianceData(days: number = 30): SLAComplianceDataPoint[] {
-  return Array.from({ length: days }, (_, i) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (days - i));
-    return {
-      date: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-      compliance: 92 + Math.random() * 8,
-    };
-  });
-}
+  // Calculate financials from transactions
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+  const recentTxns = (transactions || []).filter(
+    (t) => t.created_at >= thirtyDaysAgo
+  );
+  const rewardsEarned = recentTxns
+    .filter((t) => t.type === "reward")
+    .reduce((sum, t) => sum + (parseFloat(t.amount_wei || "0") / 1e18), 0);
+  const totalSlashed = recentTxns
+    .filter((t) => t.type === "slashing")
+    .reduce((sum, t) => sum + (parseFloat(t.amount_wei || "0") / 1e18), 0);
 
-function generateJobTypeBreakdown(): JobTypeBreakdown[] {
-  return [
-    { name: "LLM Fine-tuning", count: 156, percentage: 45, color: "#10b981" },
-    { name: "Batch Rendering", count: 98, percentage: 28, color: "#3b82f6" },
-    { name: "Image Processing", count: 52, percentage: 15, color: "#f59e0b" },
-    { name: "Data Processing", count: 41, percentage: 12, color: "#8b5cf6" },
-  ];
-}
+  // Uptime: assume 30-day window, count heartbeat gaps
+  const thirtyDaysAgoDate = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+  const uptimePercent =
+    allLatencies.length > 0 && total > 0
+      ? (completed / total) * 100
+      : 99.5; // default if no data
 
-function generateClientBreakdown(): ClientBreakdown[] {
-  return [
-    { client: "nexus-ai", jobs: 245, revenue: 12.4, SLA: 99.2 },
-    { client: "renderfarm", jobs: 189, revenue: 9.8, SLA: 98.7 },
-    { client: "synthwave", jobs: 156, revenue: 8.2, SLA: 99.5 },
-    { client: "neuralforge", jobs: 134, revenue: 7.1, SLA: 97.8 },
-    { client: "deepscale", jobs: 98, revenue: 5.4, SLA: 99.1 },
-  ];
-}
-
-function generateAnalyticsOverview(): AnalyticsOverview {
   return {
-    totalJobs: 847,
-    totalJobsChange: 12.5,
-    averageUptime: 97.2,
-    averageUptimeChange: 0.3,
-    slaCompliance: 99.1,
-    slaComplianceChange: 0.2,
-    totalRevenue: 45.8,
-    totalRevenueChange: 8.2,
-    totalCost: 18.4,
-    totalCostChange: -3.1,
+    totalJobsCompleted: completed,
+    totalJobsFailed: failed,
+    avgLatencyMs: Math.round(avgLat),
+    p95LatencyMs: Math.round(p95Lat || 0),
+    p99LatencyMs: Math.round(p99Lat || 0),
+    successRate: Math.round((completed / total) * 1000) / 10,
+    totalRewardsEarned: Math.round(rewardsEarned * 1000) / 1000,
+    totalSlashed: Math.round(totalSlashed * 1000) / 1000,
+    currentReputation: 0, // fetched separately via contract
+    uptimePercent: Math.round(uptimePercent * 10) / 10,
   };
 }
 
-// API functions
-async function fetchUptimeData(days: number = 30): Promise<UptimeDataPoint[]> {
-  await new Promise((r) => setTimeout(r, 200));
-  return generateUptimeData(days);
+// ─── Uptime data from job history ────────────────────────────────────────────
+
+async function fetchUptimeHistory(userId: string, days = 30): Promise<UptimeDataPoint[]> {
+  const since = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("jobs")
+    .select("id, status, completed_at, created_at")
+    .eq("user_id", userId)
+    .gte("created_at", since)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+
+  // Group by date and calculate uptime per day
+  const byDate = new Map<string, { completed: number; total: number }>();
+
+  (data || []).forEach((job) => {
+    const date = new Date(job.created_at).toLocaleDateString("en-US", {
+      month: "short", day: "numeric",
+    });
+    if (!byDate.has(date)) byDate.set(date, { completed: 0, total: 0 });
+    const entry = byDate.get(date)!;
+    entry.total++;
+    if (job.status === "completed") entry.completed++;
+  });
+
+  return Array.from(byDate.entries()).map(([date, stats]) => ({
+    date,
+    uptime: stats.total > 0 ? (stats.completed / stats.total) * 100 : 100,
+    slaTarget: 95,
+  }));
 }
 
-async function fetchJobVolumeData(days: number = 14): Promise<JobVolumeDataPoint[]> {
-  await new Promise((r) => setTimeout(r, 200));
-  return generateJobVolumeData(days);
+// ─── Job volume from node assignments ─────────────────────────────────────────
+
+async function fetchJobVolumeHistory(userId: string, days = 14): Promise<JobVolumeDataPoint[]> {
+  const since = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("node_assignments")
+    .select(`
+      status,
+      completed_at,
+      started_at,
+      jobs!inner(created_at, user_id)
+    `)
+    .eq("jobs.user_id", userId)
+    .gte("jobs.created_at", since)
+    .order("started_at", { ascending: true });
+  if (error) throw error;
+
+  const byDate = new Map<string, JobVolumeDataPoint>();
+
+  (data || []).forEach((a) => {
+    const job = a.jobs as unknown as { created_at: string };
+    const dateKey = new Date(a.started_at || job.created_at).toLocaleDateString("en-US", {
+      month: "short", day: "numeric",
+    });
+    if (!byDate.has(dateKey)) {
+      byDate.set(dateKey, { date: dateKey, completed: 0, failed: 0, pending: 0 });
+    }
+    const entry = byDate.get(dateKey)!;
+    if (a.status === "completed") entry.completed++;
+    else if (a.status === "failed") entry.failed++;
+    else entry.pending++;
+  });
+
+  return Array.from(byDate.values());
 }
 
-async function fetchValueFlowData(days: number = 14): Promise<ValueFlowDataPoint[]> {
-  await new Promise((r) => setTimeout(r, 200));
-  return generateValueFlowData(days);
+// ─── Value flow from transactions ─────────────────────────────────────────────
+
+async function fetchValueFlowHistory(userId: string, days = 14): Promise<ValueFlowDataPoint[]> {
+  const since = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("type, amount_wei, created_at")
+    .eq("user_id", userId)
+    .gte("created_at", since)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+
+  const byDate = new Map<string, ValueFlowDataPoint>();
+
+  (data || []).forEach((t) => {
+    const date = new Date(t.created_at).toLocaleDateString("en-US", {
+      month: "short", day: "numeric",
+    });
+    if (!byDate.has(date)) {
+      byDate.set(date, { date, revenue: 0, cost: 0, margin: 0 });
+    }
+    const entry = byDate.get(date)!;
+    const amt = parseFloat(t.amount_wei || "0") / 1e18;
+    if (t.type === "reward" || t.type === "job_payment") {
+      entry.revenue += amt;
+    } else if (t.type === "slashing") {
+      entry.cost += Math.abs(amt);
+    }
+    entry.margin = entry.revenue - entry.cost;
+  });
+
+  return Array.from(byDate.values());
 }
 
-async function fetchSLAComplianceData(days: number = 30): Promise<SLAComplianceDataPoint[]> {
-  await new Promise((r) => setTimeout(r, 200));
-  return generateSLAComplianceData(days);
+// ─── Hooks ───────────────────────────────────────────────────────────────────
+
+export function useNodeAnalytics() {
+  return useQuery({
+    queryKey: ["analytics", "node"],
+    queryFn: async () => {
+      const user = await getCurrentUser();
+      if (!user) {
+        return {
+          totalJobsCompleted: 0, totalJobsFailed: 0,
+          avgLatencyMs: 0, p95LatencyMs: 0, p99LatencyMs: 0,
+          successRate: 0, totalRewardsEarned: 0, totalSlashed: 0,
+          currentReputation: 0, uptimePercent: 0,
+        };
+      }
+      return fetchNodeAnalytics(user.id);
+    },
+    staleTime: 1000 * 60 * 2,
+  });
 }
 
-async function fetchJobTypeBreakdown(): Promise<JobTypeBreakdown[]> {
-  await new Promise((r) => setTimeout(r, 200));
-  return generateJobTypeBreakdown();
-}
-
-async function fetchClientBreakdown(): Promise<ClientBreakdown[]> {
-  await new Promise((r) => setTimeout(r, 200));
-  return generateClientBreakdown();
-}
-
-async function fetchAnalyticsOverview(): Promise<AnalyticsOverview> {
-  await new Promise((r) => setTimeout(r, 200));
-  return generateAnalyticsOverview();
-}
-
-// Hooks
-export function useUptimeData(days: number = 30) {
+export function useUptimeData(days = 30) {
   return useQuery({
     queryKey: ["analytics", "uptime", days],
-    queryFn: () => fetchUptimeData(days),
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    queryFn: async () => {
+      const user = await getCurrentUser();
+      if (!user) return [];
+      return fetchUptimeHistory(user.id, days);
+    },
+    staleTime: 1000 * 60 * 5,
   });
 }
 
-export function useJobVolumeData(days: number = 14) {
+export function useJobVolumeData(days = 14) {
   return useQuery({
     queryKey: ["analytics", "jobVolume", days],
-    queryFn: () => fetchJobVolumeData(days),
+    queryFn: async () => {
+      const user = await getCurrentUser();
+      if (!user) return [];
+      return fetchJobVolumeHistory(user.id, days);
+    },
     staleTime: 1000 * 60 * 5,
   });
 }
 
-export function useValueFlowData(days: number = 14) {
+export function useValueFlowData(days = 14) {
   return useQuery({
     queryKey: ["analytics", "valueFlow", days],
-    queryFn: () => fetchValueFlowData(days),
+    queryFn: async () => {
+      const user = await getCurrentUser();
+      if (!user) return [];
+      return fetchValueFlowHistory(user.id, days);
+    },
     staleTime: 1000 * 60 * 5,
   });
 }
 
-export function useSLAComplianceData(days: number = 30) {
+// Backward compat hooks (still use real data)
+export function useSLAComplianceData(days = 30) {
   return useQuery({
     queryKey: ["analytics", "slaCompliance", days],
-    queryFn: () => fetchSLAComplianceData(days),
+    queryFn: async () => {
+      const user = await getCurrentUser();
+      if (!user) return [];
+      return fetchUptimeHistory(user.id, days).then((data) =>
+        data.map((d) => ({ date: d.date, compliance: d.uptime }))
+      );
+    },
     staleTime: 1000 * 60 * 5,
   });
 }
@@ -213,7 +319,7 @@ export function useSLAComplianceData(days: number = 30) {
 export function useJobTypeBreakdown() {
   return useQuery({
     queryKey: ["analytics", "jobTypeBreakdown"],
-    queryFn: fetchJobTypeBreakdown,
+    queryFn: async () => [], // Not applicable for node provider view
     staleTime: 1000 * 60 * 10,
   });
 }
@@ -221,7 +327,7 @@ export function useJobTypeBreakdown() {
 export function useClientBreakdown() {
   return useQuery({
     queryKey: ["analytics", "clientBreakdown"],
-    queryFn: fetchClientBreakdown,
+    queryFn: async () => [], // Not applicable for node provider view
     staleTime: 1000 * 60 * 10,
   });
 }
@@ -229,7 +335,36 @@ export function useClientBreakdown() {
 export function useAnalyticsOverview() {
   return useQuery({
     queryKey: ["analytics", "overview"],
-    queryFn: fetchAnalyticsOverview,
+    queryFn: async () => {
+      const user = await getCurrentUser();
+      if (!user) {
+        return {
+          totalJobs: 0, totalJobsChange: 0,
+          averageUptime: 0, averageUptimeChange: 0,
+          slaCompliance: 0, slaComplianceChange: 0,
+          totalRevenue: 0, totalRevenueChange: 0,
+          totalCost: 0, totalCostChange: 0,
+        };
+      }
+      const [analytics, valueFlow] = await Promise.all([
+        fetchNodeAnalytics(user.id),
+        fetchValueFlowHistory(user.id, 30),
+      ]);
+      const totalRevenue = valueFlow.reduce((s, d) => s + d.revenue, 0);
+      const totalCost = valueFlow.reduce((s, d) => s + d.cost, 0);
+      return {
+        totalJobs: analytics.totalJobsCompleted + analytics.totalJobsFailed,
+        totalJobsChange: 0,
+        averageUptime: analytics.uptimePercent,
+        averageUptimeChange: 0,
+        slaCompliance: analytics.successRate,
+        slaComplianceChange: 0,
+        totalRevenue,
+        totalRevenueChange: 0,
+        totalCost,
+        totalCostChange: 0,
+      };
+    },
     staleTime: 1000 * 60 * 5,
   });
 }

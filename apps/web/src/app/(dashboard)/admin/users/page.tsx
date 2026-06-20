@@ -17,6 +17,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { RequireAuth } from "@/components/providers/require-auth";
+import { adminListUsers } from "@/lib/supabase-admin";
+import { Skeleton } from "@/components/ui/skeleton";
+import { AlertTriangle } from "lucide-react";
 
 interface User {
   address: string;
@@ -29,69 +32,12 @@ interface User {
   status: "active" | "suspended";
 }
 
-function generateMockUsers(): User[] {
-  return [
-    {
-      address: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
-      type: "client",
-      jobsSubmitted: 156,
-      nodesRegistered: 0,
-      totalSpend: 284.5,
-      totalEarned: 0,
-      joinedAt: Date.now() - 180 * 24 * 60 * 60 * 1000,
-      status: "active",
-    },
-    {
-      address: "0x862964cE01621d2F447D1A4d5d7dE0286FA8918f",
-      type: "provider",
-      jobsSubmitted: 0,
-      nodesRegistered: 3,
-      totalSpend: 0,
-      totalEarned: 156.8,
-      joinedAt: Date.now() - 150 * 24 * 60 * 60 * 1000,
-      status: "active",
-    },
-    {
-      address: "0x3d9dCB725C5B078cC8d2E8a4f4C7bD9e5f6a8b7c",
-      type: "client",
-      jobsSubmitted: 89,
-      nodesRegistered: 0,
-      totalSpend: 142.3,
-      totalEarned: 0,
-      joinedAt: Date.now() - 90 * 24 * 60 * 60 * 1000,
-      status: "active",
-    },
-    {
-      address: "0xfedc0987654321abcdef0123456789abcdef0123",
-      type: "provider",
-      jobsSubmitted: 0,
-      nodesRegistered: 1,
-      totalSpend: 0,
-      totalEarned: 89.2,
-      joinedAt: Date.now() - 60 * 24 * 60 * 60 * 1000,
-      status: "active",
-    },
-    {
-      address: "0x2468ace13579bdfc0246f8db9310019283746fab",
-      type: "client",
-      jobsSubmitted: 12,
-      nodesRegistered: 0,
-      totalSpend: 18.5,
-      totalEarned: 0,
-      joinedAt: Date.now() - 30 * 24 * 60 * 60 * 1000,
-      status: "suspended",
-    },
-    {
-      address: "0xabcd1234efgh5678ijkl9012mnop3456qrst6789",
-      type: "provider",
-      jobsSubmitted: 0,
-      nodesRegistered: 5,
-      totalSpend: 0,
-      totalEarned: 312.4,
-      joinedAt: Date.now() - 45 * 24 * 60 * 60 * 1000,
-      status: "active",
-    },
-  ];
+interface ProfileRow {
+  id: string;
+  wallet_address: string;
+  user_type: string;
+  status: string;
+  created_at: string;
 }
 
 function formatDate(timestamp: number): string {
@@ -111,8 +57,80 @@ export default function AdminUsersPage() {
 }
 
 function AdminUsersContent() {
-  const [users] = React.useState<User[]>(generateMockUsers());
+  const [users, setUsers] = React.useState<User[] | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = React.useState("");
+
+  React.useEffect(() => {
+    adminListUsers(100)
+      .then((profiles: ProfileRow[]) => {
+        const mapped: User[] = profiles.map((p) => ({
+          address: p.wallet_address,
+          type: p.user_type as "client" | "provider",
+          jobsSubmitted: 0,
+          nodesRegistered: 0,
+          totalSpend: 0,
+          totalEarned: 0,
+          joinedAt: new Date(p.created_at).getTime(),
+          status: p.status as "active" | "suspended",
+        }));
+        setUsers(mapped);
+      })
+      .catch((err) => {
+        setError(err.message || "Failed to load users");
+      });
+  }, []);
+
+  if (error) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Card className="bg-bg-surface/80 p-6">
+          <div className="flex items-center gap-3 text-indicator-slashed">
+            <AlertTriangle className="h-5 w-5" />
+            <span className="text-sm">{error}</span>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!users) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <Skeleton className="h-6 w-24" />
+        </div>
+        <div className="grid gap-3 md:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i} className="bg-bg-surface/80">
+              <CardContent className="p-4">
+                <Skeleton className="h-8 w-16 mb-1" />
+                <Skeleton className="h-3 w-20" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card className="bg-bg-surface/80">
+          <CardContent className="p-4">
+            <Skeleton className="h-10 w-full" />
+          </CardContent>
+        </Card>
+        <Card className="bg-bg-surface/80">
+          <CardContent className="p-0 px-4 py-3">
+            <Skeleton className="h-10 w-full" />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const clientCount = users.filter((u) => u.type === "client").length;
+  const providerCount = users.filter((u) => u.type === "provider").length;
+  const totalVolume = users.reduce((sum, u) => sum + u.totalSpend + u.totalEarned, 0);
 
   const filteredUsers = users.filter((user) => {
     if (searchQuery) {
@@ -123,10 +141,6 @@ function AdminUsersContent() {
     }
     return true;
   });
-
-  const clientCount = users.filter((u) => u.type === "client").length;
-  const providerCount = users.filter((u) => u.type === "provider").length;
-  const totalVolume = users.reduce((sum, u) => sum + u.totalSpend + u.totalEarned, 0);
 
   return (
     <div className="flex flex-col gap-4">

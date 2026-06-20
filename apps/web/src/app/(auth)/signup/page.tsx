@@ -3,6 +3,12 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+
+class ErrorBoundary extends React.Component<{children:React.ReactNode;fallback:React.ReactNode},{hasError:boolean}> {
+  constructor(props:any){super(props);this.state={hasError:false}}
+  static getDerivedStateFromError(){return{hasError:true}}
+  render(){if(this.state.hasError)return this.props.fallback;return this.props.children}
+}
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -117,6 +123,7 @@ export default function SignupPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 pt-4">
+              <ErrorBoundary fallback={<div className="space-y-4"><div className="h-4 w-full bg-bg-base/50 animate-pulse rounded" /><div className="h-10 w-full bg-bg-base/50 animate-pulse rounded" /><div className="h-10 w-full bg-bg-base/50 animate-pulse rounded" /></div>}>
               {/* Error message */}
               {error && (
                 <div className="p-3 rounded-md bg-indicator-slashed/10 border border-indicator-slashed/30 text-indicator-slashed text-sm">
@@ -353,6 +360,7 @@ export default function SignupPage() {
                 <Wallet className="mr-2 h-4 w-4" />
                 Connect Wallet
               </Button>
+              </ErrorBoundary>
             </CardContent>
           </Card>
 

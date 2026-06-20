@@ -15,6 +15,7 @@ const (
 	JobCompleted JobStatus = 2
 	JobFailed    JobStatus = 3
 	JobRequeued  JobStatus = 4
+	JobCancelled JobStatus = 5
 )
 
 // NodeStatus represents the status of a GPU compute node.

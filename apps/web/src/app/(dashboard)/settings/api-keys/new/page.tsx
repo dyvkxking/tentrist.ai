@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/shared/page-header";
-import { useAuthStore } from "@/stores/auth-store";
+import { useAuth } from "@/hooks/use-auth";
 import { apiKeysApi } from "@/lib/supabase";
 
 const PERMISSIONS = [
@@ -21,7 +21,7 @@ const PERMISSIONS = [
 
 export default function NewApiKeyPage() {
   const router = useRouter();
-  const user = useAuthStore((s) => s.user);
+  const { user } = useAuth();
   const [name, setName] = React.useState("");
   const [selected, setSelected] = React.useState<string[]>(["jobs:read"]);
   const [isCreating, setIsCreating] = React.useState(false);

@@ -18,74 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RequireAuth } from "@/components/providers/require-auth";
-
-interface ContractParameter {
-  name: string;
-  value: string;
-  type: string;
-}
-
-function generateMockContractDetail(name: string) {
-  const contracts: Record<string, { address: string; network: string; parameters: ContractParameter[] }> = {
-    escrow: {
-      address: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
-      network: "Ethereum Mainnet",
-      parameters: [
-        { name: "minStake", value: "1 ETH", type: "uint256" },
-        { name: "maxStake", value: "100 ETH", type: "uint256" },
-        { name: "totalStaked", value: "12,847.32 ETH", type: "uint256" },
-        { name: "nodeCount", value: "312", type: "uint256" },
-      ],
-    },
-    slacontract: {
-      address: "0x862964cE01621d2F447D1A4d5d7dE0286FA8918f",
-      network: "Ethereum Mainnet",
-      parameters: [
-        { name: "slashPercentage", value: "5%", type: "uint256" },
-        { name: "uptimeThreshold", value: "95%", type: "uint256" },
-        { name: "throughputThreshold", value: "80%", type: "uint256" },
-        { name: "heartbeatInterval", value: "30s", type: "uint256" },
-        { name: "maxLatency", value: "200ms", type: "uint256" },
-        { name: "checkpointInterval", value: "15m", type: "uint256" },
-      ],
-    },
-    slashmanager: {
-      address: "0x3d9dCB725C5B078cC8d2E8a4f4C7bD9e5f6a8b7c",
-      network: "Ethereum Mainnet",
-      parameters: [
-        { name: "slashPercentage", value: "10%", type: "uint256" },
-        { name: "minSlashAmount", value: "0.01 ETH", type: "uint256" },
-        { name: "maxSlashAmount", value: "50 ETH", type: "uint256" },
-        { name: "slashCoolingPeriod", value: "24h", type: "uint256" },
-        { name: "totalSlashed", value: "47.8 ETH", type: "uint256" },
-        { name: "pendingSlashes", value: "5", type: "uint256" },
-      ],
-    },
-    reputationledger: {
-      address: "0xfedc0987654321abcdef0123456789abcdef0123",
-      network: "Ethereum Mainnet",
-      parameters: [
-        { name: "goldThreshold", value: "100", type: "uint256" },
-        { name: "silverThreshold", value: "50", type: "uint256" },
-        { name: "bronzeThreshold", value: "0", type: "uint256" },
-        { name: "reputationMultiplier", value: "1.5x", type: "uint256" },
-      ],
-    },
-    governance: {
-      address: "0x2468ace13579bdfc0246f8db9310019283746fab",
-      network: "Ethereum Mainnet",
-      parameters: [
-        { name: "proposalThreshold", value: "100 ETH", type: "uint256" },
-        { name: "votingPeriod", value: "7 days", type: "uint256" },
-        { name: "quorum", value: "2,000 ETH", type: "uint256" },
-        { name: "timelockDelay", value: "48h", type: "uint256" },
-        { name: "totalProposals", value: "24", type: "uint256" },
-      ],
-    },
-  };
-
-  return contracts[name] || contracts.escrow;
-}
+import { adminGetContract } from "@/lib/supabase-admin";
 
 function formatRelativeTime(timestamp: number): string {
   const diff = Date.now() - timestamp;
@@ -111,10 +44,59 @@ interface AdminContractDetailContentProps {
 }
 
 function AdminContractDetailContent({ contractName }: AdminContractDetailContentProps) {
-  const contract = generateMockContractDetail(contractName);
+  const [contract, setContract] = React.useState<any | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(true);
   const [activeTab, setActiveTab] = React.useState("read");
 
+  React.useEffect(() => {
+    adminGetContract(contractName)
+      .then((data) => {
+        setContract(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err.message || "Failed to load contract");
+        setLoading(false);
+      });
+  }, [contractName]);
+
   const displayName = contractName.charAt(0).toUpperCase() + contractName.slice(1);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-4">
+            <div className="h-8 w-8 bg-bg-surface rounded animate-pulse" />
+            <div className="flex flex-col gap-1">
+              <div className="h-8 w-48 bg-bg-surface rounded animate-pulse" />
+              <div className="h-4 w-64 bg-bg-surface rounded animate-pulse mt-1" />
+            </div>
+          </div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-20 bg-bg-surface rounded animate-pulse" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Card className="bg-bg-surface/80 border-indicator-slashed">
+          <CardContent className="p-6 text-center">
+            <p className="text-sm text-indicator-slashed">{error}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!contract) return null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -207,7 +189,7 @@ function AdminContractDetailContent({ contractName }: AdminContractDetailContent
             </CardHeader>
             <CardContent className="p-0">
               <div className="divide-y divide-hairline">
-                {contract.parameters.map((param) => (
+                {contract.parameters.map((param: { name: string; value: string; type: string }) => (
                   <div key={param.name} className="flex items-center justify-between p-4 hover:bg-bg-base/50 transition-colors">
                     <div>
                       <div className="text-sm font-medium text-foreground">{param.name}</div>

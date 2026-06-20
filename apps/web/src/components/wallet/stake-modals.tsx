@@ -16,6 +16,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useWriteContract, useWaitForTransactionReceipt, useAccount } from "wagmi";
+import { formatEther, parseEther } from "viem";
+import { ESCROW_ABI, CONTRACT_ADDRESSES } from "@/lib/contracts";
 
 // Validation errors type
 interface ValidationErrors {
@@ -74,65 +77,69 @@ function Modal({
 interface StakeModalProps {
   open: boolean;
   onClose: () => void;
-  currentStake: number;
-  maxStake?: number;
-  currency?: string;
+  currentStake: string; // in ETH (string for formatting)
+  minStake: string;     // min stake required (string)
+  balance: string;       // ETH wallet balance (string)
 }
 
 export function StakeModal({
   open,
   onClose,
-  currentStake = 0,
-  maxStake = 100,
-  currency = "ETH",
+  currentStake = "0",
+  minStake = "0",
+  balance = "0",
 }: StakeModalProps) {
+  const { address } = useAccount();
   const [amount, setAmount] = React.useState("");
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const [isSuccess, setIsSuccess] = React.useState(false);
-  const [errors, setErrors] = React.useState<ValidationErrors>({});
+  const [txHash, setTxHash] = React.useState<`0x${string}` | undefined>(undefined);
+
+  const {
+    writeContract,
+    isPending: isWritePending,
+    error: writeError,
+  } = useWriteContract();
+
+  const { isLoading: isConfirming, isSuccess: isConfirmed } =
+    useWaitForTransactionReceipt({ hash: txHash });
 
   const parsedAmount = parseFloat(amount) || 0;
-  const newStake = currentStake + parsedAmount;
+  const parsedCurrentStake = parseFloat(currentStake) || 0;
+  const parsedBalance = parseFloat(balance) || 0;
+  const parsedMinStake = parseFloat(minStake) || 0;
+  const newStake = parsedCurrentStake + parsedAmount;
 
-  const validate = (): boolean => {
-    const newErrors: ValidationErrors = {};
+  const errors: ValidationErrors = {};
 
-    if (!amount || parsedAmount <= 0) {
-      newErrors.amount = "Enter a valid amount greater than 0";
-    } else if (parsedAmount > maxStake) {
-      newErrors.amount = `Cannot exceed max stake of ${maxStake} ${currency}`;
-    } else if (parsedAmount > 10) {
-      // Check if they have sufficient balance (mock)
-      newErrors.amount = "Insufficient balance for this stake amount";
-    }
-
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      return false;
-    }
-    return true;
-  };
+  if (amount && parsedAmount <= 0) {
+    errors.amount = "Enter a valid amount greater than 0";
+  }
+  if (parsedAmount > parsedBalance) {
+    errors.amount = "Insufficient wallet balance";
+  }
+  if (newStake < parsedMinStake && newStake > parsedCurrentStake) {
+    errors.amount = `Minimum stake of ${parsedMinStake} ETH required`;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) return;
+    if (!address || !amount || parsedAmount <= 0) return;
 
-    setIsSubmitting(true);
-    // Simulate transaction
-    await new Promise((r) => setTimeout(r, 2000));
-    setIsSubmitting(false);
-    setIsSuccess(true);
+    writeContract({
+      address: CONTRACT_ADDRESSES.Escrow,
+      abi: ESCROW_ABI,
+      functionName: "stake",
+      value: parseEther(amount),
+    });
   };
 
   const handleClose = () => {
     setAmount("");
-    setErrors({});
-    setIsSuccess(false);
-    setIsSubmitting(false);
+    setTxHash(undefined);
     onClose();
   };
 
-  if (isSuccess) {
+
+  if (isConfirmed) {
     return (
       <Modal open={open} onClose={handleClose} title="Stake Added">
         <div className="text-center py-6">
@@ -143,24 +150,34 @@ export function StakeModal({
           <p className="text-foreground-muted mb-4">
             You have successfully added{" "}
             <span className="font-mono-data text-indicator-active">
-              {parsedAmount} {currency}
+              {parsedAmount.toFixed(4)} ETH
             </span>{" "}
             to your stake.
           </p>
           <div className="p-3 bg-bg-base rounded-lg mb-6">
             <div className="flex justify-between text-sm mb-1">
               <span className="text-foreground-muted">Previous Stake</span>
-              <span className="font-mono-data">{currentStake.toFixed(3)} {currency}</span>
+              <span className="font-mono-data">{parsedCurrentStake.toFixed(4)} ETH</span>
             </div>
             <div className="flex justify-between text-sm mb-1">
               <span className="text-foreground-muted">Added</span>
-              <span className="font-mono-data text-indicator-active">+{parsedAmount.toFixed(3)} {currency}</span>
+              <span className="font-mono-data text-indicator-active">+{parsedAmount.toFixed(4)} ETH</span>
             </div>
             <div className="flex justify-between text-sm font-medium border-t border-hairline pt-1 mt-1">
               <span className="text-foreground">New Stake</span>
-              <span className="font-mono-data text-indicator-active">{newStake.toFixed(3)} {currency}</span>
+              <span className="font-mono-data text-indicator-active">{newStake.toFixed(4)} ETH</span>
             </div>
           </div>
+          {txHash && (
+            <a
+              href={`https://etherscan.io/tx/${txHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-indicator-active hover:underline mb-4"
+            >
+              View on Etherscan <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
           <Button onClick={handleClose} className="w-full">
             Done
           </Button>
@@ -176,23 +193,26 @@ export function StakeModal({
         <div className="p-3 bg-bg-base rounded-lg">
           <div className="flex justify-between text-sm mb-1">
             <span className="text-foreground-muted">Current Stake</span>
-            <span className="font-mono-data">{currentStake.toFixed(3)} {currency}</span>
+            <span className="font-mono-data">{parsedCurrentStake.toFixed(4)} ETH</span>
+          </div>
+          <div className="flex justify-between text-sm mb-1">
+            <span className="text-foreground-muted">Wallet Balance</span>
+            <span className="font-mono-data">{parsedBalance.toFixed(4)} ETH</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-foreground-muted">Max Allowed</span>
-            <span className="font-mono-data">{maxStake.toFixed(3)} {currency}</span>
+            <span className="text-foreground-muted">Min Required</span>
+            <span className="font-mono-data">{parsedMinStake.toFixed(4)} ETH</span>
           </div>
         </div>
 
         {/* Amount input */}
         <Input
-          label={`Amount to Stake (${currency})`}
+          label="Amount to Stake (ETH)"
           type="number"
-          placeholder="0.00"
+          placeholder="0.0000"
           value={amount}
           onChange={(e) => {
             setAmount(e.target.value);
-            setErrors({});
           }}
           error={!!errors.amount}
           helperText={errors.amount}
@@ -207,17 +227,17 @@ export function StakeModal({
               onClick={() => setAmount(String(val))}
               className={cn(
                 "flex-1 py-2 text-xs font-mono-data rounded-md border transition-colors",
-                parseFloat(amount) === val
+                parsedAmount === val
                   ? "border-indicator-active bg-indicator-active/10 text-indicator-active"
                   : "border-hairline text-foreground-muted hover:border-zinc-600"
               )}
             >
-              +{val} {currency}
+              +{val} ETH
             </button>
           ))}
           <button
             type="button"
-            onClick={() => setAmount(String(maxStake - currentStake))}
+            onClick={() => setAmount(String(parsedBalance.toFixed(4)))}
             className="flex-1 py-2 text-xs font-mono-data rounded-md border border-hairline text-foreground-muted hover:border-zinc-600"
           >
             MAX
@@ -230,9 +250,19 @@ export function StakeModal({
             <div className="flex justify-between text-sm">
               <span className="text-foreground-muted">New Total Stake</span>
               <span className="font-mono-data text-indicator-active font-medium">
-                {newStake.toFixed(3)} {currency}
+                {newStake.toFixed(4)} ETH
               </span>
             </div>
+          </div>
+        )}
+
+        {/* Error from tx */}
+        {writeError && (
+          <div className="flex items-start gap-2 p-3 bg-indicator-slashed/10 border border-indicator-slashed/20 rounded-lg">
+            <AlertTriangle className="h-4 w-4 text-indicator-slashed flex-shrink-0 mt-0.5" />
+            <span className="text-xs text-indicator-slashed">
+              {writeError.message.includes("0x") ? "Transaction rejected" : String(writeError?.message || "Transaction failed")}
+            </span>
           </div>
         )}
 
@@ -244,9 +274,7 @@ export function StakeModal({
               Staked funds are locked in the Escrow contract and subject to
               slashing under SLA breach conditions.
             </p>
-            <p>
-              30-day unstaking cooldown applies when initiating unstaking.
-            </p>
+            <p>30-day unstaking cooldown applies when initiating unstaking.</p>
           </div>
         </div>
 
@@ -255,11 +283,15 @@ export function StakeModal({
           <Button type="button" variant="outline" className="flex-1" onClick={handleClose}>
             Cancel
           </Button>
-          <Button type="submit" className="flex-1" disabled={isSubmitting}>
-            {isSubmitting ? (
+          <Button
+            type="submit"
+            className="flex-1"
+            disabled={isWritePending || isConfirming || !amount || !!errors.amount}
+          >
+            {isWritePending || isConfirming ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                Confirming...
+                {isConfirming ? "Confirming..." : "Sign Transaction..."}
               </>
             ) : (
               <>
@@ -278,74 +310,68 @@ export function StakeModal({
 interface UnstakeModalProps {
   open: boolean;
   onClose: () => void;
-  currentStake: number;
-  currency?: string;
+  currentStake: string; // in ETH (string)
 }
 
 export function UnstakeModal({
   open,
   onClose,
-  currentStake = 0,
-  currency = "ETH",
+  currentStake = "0",
 }: UnstakeModalProps) {
+  const { address } = useAccount();
   const [amount, setAmount] = React.useState("");
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const [isSuccess, setIsSuccess] = React.useState(false);
-  const [errors, setErrors] = React.useState<ValidationErrors>({});
+  const [txHash, setTxHash] = React.useState<`0x${string}` | undefined>(undefined);
   const [hasCooldownAcknowledged, setHasCooldownAcknowledged] = React.useState(false);
 
+  const {
+    writeContract,
+    isPending: isWritePending,
+    error: writeError,
+  } = useWriteContract();
+
+  const { isLoading: isConfirming, isSuccess: isConfirmed } =
+    useWaitForTransactionReceipt({ hash: txHash });
+
   const parsedAmount = parseFloat(amount) || 0;
-  const remainingStake = currentStake - parsedAmount;
+  const parsedCurrentStake = parseFloat(currentStake) || 0;
+  const remainingStake = parsedCurrentStake - parsedAmount;
+  const MIN_KEEP = 10; // 10 ETH minimum keep
 
-  const validate = (): boolean => {
-    const newErrors: ValidationErrors = {};
+  const errors: ValidationErrors = {};
 
-    if (!amount || parsedAmount <= 0) {
-      newErrors.amount = "Enter a valid amount greater than 0";
-    } else if (parsedAmount > currentStake) {
-      newErrors.amount = `Cannot exceed current stake of ${currentStake.toFixed(3)} ${currency}`;
-    } else if (remainingStake < 10) {
-      newErrors.amount = "Minimum stake of 10 ETH must be maintained";
-    }
-
-    // Check for active jobs (mock)
-    const hasActiveJobs = parsedAmount >= currentStake;
-    if (hasActiveJobs) {
-      newErrors.general = "You have active jobs running. Complete or requeue them before unstaking all funds.";
-    }
-
-    if (!hasCooldownAcknowledged) {
-      newErrors.general = "You must acknowledge the 30-day unstaking cooldown period";
-    }
-
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      return false;
-    }
-    return true;
-  };
+  if (amount && parsedAmount <= 0) {
+    errors.amount = "Enter a valid amount greater than 0";
+  }
+  if (parsedAmount > parsedCurrentStake) {
+    errors.amount = "Cannot exceed current stake";
+  }
+  if (remainingStake < MIN_KEEP && remainingStake >= 0) {
+    errors.amount = `Minimum stake of ${MIN_KEEP} ETH must be maintained`;
+  }
+  if (!hasCooldownAcknowledged) {
+    // Don't show error by default; just disable submit
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) return;
+    if (!address || !amount || parsedAmount <= 0) return;
 
-    setIsSubmitting(true);
-    // Simulate transaction
-    await new Promise((r) => setTimeout(r, 2000));
-    setIsSubmitting(false);
-    setIsSuccess(true);
+    writeContract({
+      address: CONTRACT_ADDRESSES.Escrow,
+      abi: ESCROW_ABI,
+      functionName: "withdraw",
+      args: [parseEther(amount)],
+    });
   };
 
   const handleClose = () => {
     setAmount("");
-    setErrors({});
-    setIsSuccess(false);
-    setIsSubmitting(false);
+    setTxHash(undefined);
     setHasCooldownAcknowledged(false);
     onClose();
   };
 
-  if (isSuccess) {
+  if (isConfirmed) {
     return (
       <Modal open={open} onClose={handleClose} title="Unstaking Initiated">
         <div className="text-center py-6">
@@ -356,7 +382,7 @@ export function UnstakeModal({
           <p className="text-foreground-muted mb-4">
             Your unstaking request for{" "}
             <span className="font-mono-data text-indicator-stale">
-              {parsedAmount} {currency}
+              {parsedAmount.toFixed(4)} ETH
             </span>{" "}
             has been submitted.
           </p>
@@ -375,6 +401,16 @@ export function UnstakeModal({
               <li>Funds will be released after cooldown expires</li>
             </ul>
           </div>
+          {txHash && (
+            <a
+              href={`https://etherscan.io/tx/${txHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-indicator-active hover:underline mb-4"
+            >
+              View on Etherscan <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
           <Button onClick={handleClose} className="w-full">
             Done
           </Button>
@@ -383,6 +419,15 @@ export function UnstakeModal({
     );
   }
 
+  const canSubmit =
+    amount &&
+    parsedAmount > 0 &&
+    parsedAmount <= parsedCurrentStake &&
+    remainingStake >= MIN_KEEP &&
+    hasCooldownAcknowledged &&
+    !isWritePending &&
+    !isConfirming;
+
   return (
     <Modal open={open} onClose={handleClose} title="Initiate Unstaking">
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -390,24 +435,21 @@ export function UnstakeModal({
         <div className="p-3 bg-bg-base rounded-lg">
           <div className="flex justify-between text-sm mb-1">
             <span className="text-foreground-muted">Current Stake</span>
-            <span className="font-mono-data">{currentStake.toFixed(3)} {currency}</span>
+            <span className="font-mono-data">{parsedCurrentStake.toFixed(4)} ETH</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-foreground-muted">Minimum Required</span>
-            <span className="font-mono-data">10.000 {currency}</span>
+            <span className="font-mono-data">{MIN_KEEP.toFixed(4)} ETH</span>
           </div>
         </div>
 
         {/* Amount input */}
         <Input
-          label={`Amount to Unstake (${currency})`}
+          label="Amount to Unstake (ETH)"
           type="number"
-          placeholder="0.00"
+          placeholder="0.0000"
           value={amount}
-          onChange={(e) => {
-            setAmount(e.target.value);
-            setErrors({});
-          }}
+          onChange={(e) => setAmount(e.target.value)}
           error={!!errors.amount}
           helperText={errors.amount}
         />
@@ -415,15 +457,15 @@ export function UnstakeModal({
         {/* Quick amount buttons */}
         <div className="flex gap-2">
           {[0.25, 0.5, 0.75].map((fraction) => {
-            const val = currentStake * fraction;
+            const val = parsedCurrentStake * fraction;
             return (
               <button
                 key={fraction}
                 type="button"
-                onClick={() => setAmount(String(val.toFixed(3)))}
+                onClick={() => setAmount(String(val.toFixed(4)))}
                 className={cn(
                   "flex-1 py-2 text-xs font-mono-data rounded-md border transition-colors",
-                  Math.abs(parseFloat(amount) - val) < 0.001
+                  Math.abs(parsedAmount - val) < 0.0001
                     ? "border-indicator-stale bg-indicator-stale/10 text-indicator-stale"
                     : "border-hairline text-foreground-muted hover:border-zinc-600"
                 )}
@@ -434,7 +476,7 @@ export function UnstakeModal({
           })}
           <button
             type="button"
-            onClick={() => setAmount(String((currentStake - 10).toFixed(3)))}
+            onClick={() => setAmount(String(Math.max(0, parsedCurrentStake - MIN_KEEP).toFixed(4)))}
             className="flex-1 py-2 text-xs font-mono-data rounded-md border border-hairline text-foreground-muted hover:border-zinc-600"
           >
             MIN KEEP
@@ -442,18 +484,18 @@ export function UnstakeModal({
         </div>
 
         {/* New stake preview */}
-        {parsedAmount > 0 && (
+        {parsedAmount > 0 && remainingStake >= 0 && (
           <div className="p-3 bg-indicator-stale/5 border border-indicator-stale/20 rounded-lg">
             <div className="flex justify-between text-sm mb-1">
               <span className="text-foreground-muted">Remaining Stake</span>
               <span className="font-mono-data text-indicator-stale font-medium">
-                {remainingStake.toFixed(3)} {currency}
+                {remainingStake.toFixed(4)} ETH
               </span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-foreground-muted">Will Receive</span>
               <span className="font-mono-data text-indicator-active">
-                {parsedAmount.toFixed(3)} {currency}
+                {parsedAmount.toFixed(4)} ETH
               </span>
             </div>
           </div>
@@ -465,10 +507,7 @@ export function UnstakeModal({
             type="checkbox"
             id="cooldown-ack"
             checked={hasCooldownAcknowledged}
-            onChange={(e) => {
-              setHasCooldownAcknowledged(e.target.checked);
-              setErrors({});
-            }}
+            onChange={(e) => setHasCooldownAcknowledged(e.target.checked)}
             className="mt-1 h-4 w-4 rounded border-border-hairline bg-bg-base text-indicator-active focus-visible:ring-indicator-active/50"
           />
           <label htmlFor="cooldown-ack" className="text-xs text-foreground-muted">
@@ -478,11 +517,13 @@ export function UnstakeModal({
           </label>
         </div>
 
-        {/* Warnings */}
-        {errors.general && (
+        {/* Error from tx */}
+        {writeError && (
           <div className="flex items-start gap-2 p-3 bg-indicator-slashed/10 border border-indicator-slashed/20 rounded-lg">
             <AlertTriangle className="h-4 w-4 text-indicator-slashed flex-shrink-0 mt-0.5" />
-            <span className="text-xs text-indicator-slashed">{errors.general}</span>
+            <span className="text-xs text-indicator-slashed">
+              {String(writeError?.message || "Transaction failed")}
+            </span>
           </div>
         )}
 
@@ -495,12 +536,12 @@ export function UnstakeModal({
             type="submit"
             variant="destructive"
             className="flex-1"
-            disabled={isSubmitting}
+            disabled={!canSubmit}
           >
-            {isSubmitting ? (
+            {isWritePending || isConfirming ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                Confirming...
+                {isConfirming ? "Confirming..." : "Sign Transaction..."}
               </>
             ) : (
               <>

@@ -17,69 +17,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { RequireAuth } from "@/components/providers/require-auth";
+import { adminListDisputes } from "@/lib/supabase-admin";
 
 interface Dispute {
   id: string;
-  nodeAddress: string;
-  jobId: string;
-  slashAmount: number;
+  node_address: string;
+  job_id: string;
+  slash_amount: number;
   reason: string;
   status: "pending" | "resolved" | "rejected";
-  createdAt: number;
+  created_at: string;
 }
 
-function generateMockDisputes(): Dispute[] {
-  return [
-    {
-      id: "dispute_001",
-      nodeAddress: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
-      jobId: "job_a1b2c3d4",
-      slashAmount: 0.45,
-      reason: "SLA breach: missed heartbeat intervals",
-      status: "pending",
-      createdAt: Date.now() - 2 * 60 * 60 * 1000,
-    },
-    {
-      id: "dispute_002",
-      nodeAddress: "0x862964cE01621d2F447D1A4d5d7dE0286FA8918f",
-      jobId: "job_e5f6g7h8",
-      slashAmount: 0.32,
-      reason: "VRAM exceeded 95% threshold",
-      status: "pending",
-      createdAt: Date.now() - 5 * 60 * 60 * 1000,
-    },
-    {
-      id: "dispute_003",
-      nodeAddress: "0x3d9dCB725C5B078cC8d2E8a4f4C7bD9e5f6a8b7c",
-      jobId: "job_i9j0k1l2",
-      slashAmount: 0.78,
-      reason: "Latency SLA breach: avg 350ms > 200ms target",
-      status: "resolved",
-      createdAt: Date.now() - 24 * 60 * 60 * 1000,
-    },
-    {
-      id: "dispute_004",
-      nodeAddress: "0xfedc0987654321abcdef0123456789abcdef0123",
-      jobId: "job_m3n4o5p6",
-      slashAmount: 0.21,
-      reason: "Missed checkpoint deadlines",
-      status: "rejected",
-      createdAt: Date.now() - 48 * 60 * 60 * 1000,
-    },
-    {
-      id: "dispute_005",
-      nodeAddress: "0x2468ace13579bdfc0246f8db9310019283746fab",
-      jobId: "job_q7r8s9t0",
-      slashAmount: 0.55,
-      reason: "SLA breach: uptime 87% < 95% required",
-      status: "pending",
-      createdAt: Date.now() - 6 * 60 * 60 * 1000,
-    },
-  ];
-}
-
-function formatRelativeTime(timestamp: number): string {
-  const diff = Date.now() - timestamp;
+function formatRelativeTime(timestamp: string): string {
+  const diff = Date.now() - new Date(timestamp).getTime();
   if (diff < 60000) return "Just now";
   if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
@@ -113,25 +64,44 @@ export default function AdminSlashingDisputesPage() {
 }
 
 function AdminSlashingDisputesContent() {
-  const [disputes] = React.useState<Dispute[]>(generateMockDisputes());
+  const [disputes, setDisputes] = React.useState<Dispute[] | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = React.useState("");
 
-  const filteredDisputes = disputes.filter((dispute) => {
+  React.useEffect(() => {
+    async function loadData() {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await adminListDisputes();
+        setDisputes(data as Dispute[]);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load disputes");
+        setDisputes([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
+  const filteredDisputes = disputes?.filter((dispute) => {
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       if (
         !dispute.id.toLowerCase().includes(query) &&
-        !dispute.nodeAddress.toLowerCase().includes(query) &&
-        !dispute.jobId.toLowerCase().includes(query)
+        !dispute.node_address.toLowerCase().includes(query) &&
+        !dispute.job_id.toLowerCase().includes(query)
       ) {
         return false;
       }
     }
     return true;
-  });
+  }) ?? [];
 
-  const pendingCount = disputes.filter((d) => d.status === "pending").length;
-  const totalDisputed = disputes.reduce((sum, d) => sum + d.slashAmount, 0);
+  const pendingCount = disputes?.filter((d) => d.status === "pending").length ?? 0;
+  const totalDisputed = disputes?.reduce((sum, d) => sum + d.slash_amount, 0) ?? 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -157,31 +127,47 @@ function AdminSlashingDisputesContent() {
       <div className="grid gap-3 md:grid-cols-4">
         <Card className="bg-bg-surface/80">
           <CardContent className="p-4">
-            <div className="text-2xl font-semibold font-mono-data">{disputes.length}</div>
+            {loading ? (
+              <div className="h-8 w-12 bg-bg-base rounded animate-pulse" />
+            ) : (
+              <div className="text-2xl font-semibold font-mono-data">{disputes?.length ?? 0}</div>
+            )}
             <div className="text-xs text-foreground-muted">Total Disputes</div>
           </CardContent>
         </Card>
         <Card className="bg-bg-surface/80">
           <CardContent className="p-4">
-            <div className="text-2xl font-semibold font-mono-data text-indicator-stale">
-              {pendingCount}
-            </div>
+            {loading ? (
+              <div className="h-8 w-12 bg-bg-base rounded animate-pulse" />
+            ) : (
+              <div className="text-2xl font-semibold font-mono-data text-indicator-stale">
+                {pendingCount}
+              </div>
+            )}
             <div className="text-xs text-foreground-muted">Pending</div>
           </CardContent>
         </Card>
         <Card className="bg-bg-surface/80">
           <CardContent className="p-4">
-            <div className="text-2xl font-semibold font-mono-data text-indicator-active">
-              {disputes.filter((d) => d.status === "resolved").length}
-            </div>
+            {loading ? (
+              <div className="h-8 w-12 bg-bg-base rounded animate-pulse" />
+            ) : (
+              <div className="text-2xl font-semibold font-mono-data text-indicator-active">
+                {disputes?.filter((d) => d.status === "resolved").length ?? 0}
+              </div>
+            )}
             <div className="text-xs text-foreground-muted">Resolved</div>
           </CardContent>
         </Card>
         <Card className="bg-bg-surface/80">
           <CardContent className="p-4">
-            <div className="text-2xl font-semibold font-mono-data text-indicator-slashed">
-              {totalDisputed.toFixed(3)} ETH
-            </div>
+            {loading ? (
+              <div className="h-8 w-16 bg-bg-base rounded animate-pulse" />
+            ) : (
+              <div className="text-2xl font-semibold font-mono-data text-indicator-slashed">
+                {totalDisputed.toFixed(3)} ETH
+              </div>
+            )}
             <div className="text-xs text-foreground-muted">Total Disputed</div>
           </CardContent>
         </Card>
@@ -237,62 +223,87 @@ function AdminSlashingDisputesContent() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-hairline">
-                {filteredDisputes.map((dispute) => {
-                  const StatusIcon = statusConfig[dispute.status].icon;
-                  return (
-                    <tr key={dispute.id} className="hover:bg-bg-base/50 transition-colors">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <Scale className="h-4 w-4 text-foreground-muted" />
-                          <span className="text-xs font-mono-data text-foreground">
-                            {dispute.id}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-xs font-mono-data text-foreground-muted">
-                          {dispute.nodeAddress.slice(0, 8)}...{dispute.nodeAddress.slice(-6)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-xs font-mono-data text-indicator-active">
-                          {dispute.jobId}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-sm font-mono-data text-indicator-slashed">
-                          -{dispute.slashAmount.toFixed(3)} ETH
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-xs text-foreground-muted line-clamp-1">
-                          {dispute.reason}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge
-                          variant="outline"
-                          className={cn("text-xs", statusConfig[dispute.status].color)}
-                        >
-                          <StatusIcon className="h-3 w-3 mr-1" />
-                          {statusConfig[dispute.status].label}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-xs text-foreground-muted">
-                          {formatRelativeTime(dispute.createdAt)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Link href={`/admin/slashing/disputes/${dispute.id}`}>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </Link>
-                      </td>
+                {loading ? (
+                  [1, 2, 3].map((i) => (
+                    <tr key={i} className="hover:bg-bg-base/50 transition-colors">
+                      {[1, 2, 3, 4, 5, 6, 7].map((j) => (
+                        <td key={j} className="px-4 py-3">
+                          <div className="h-4 w-20 bg-bg-base rounded animate-pulse" />
+                        </td>
+                      ))}
+                      <td className="px-4 py-3"></td>
                     </tr>
-                  );
-                })}
+                  ))
+                ) : error ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-8 text-center text-sm text-indicator-slashed">
+                      {error}
+                    </td>
+                  </tr>
+                ) : filteredDisputes.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-8 text-center text-sm text-foreground-muted">
+                      No disputes found
+                    </td>
+                  </tr>
+                ) : (
+                  filteredDisputes.map((dispute) => {
+                    const StatusIcon = statusConfig[dispute.status].icon;
+                    return (
+                      <tr key={dispute.id} className="hover:bg-bg-base/50 transition-colors">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <Scale className="h-4 w-4 text-foreground-muted" />
+                            <span className="text-xs font-mono-data text-foreground">
+                              {dispute.id}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-xs font-mono-data text-foreground-muted">
+                            {dispute.node_address.slice(0, 8)}...{dispute.node_address.slice(-6)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-xs font-mono-data text-indicator-active">
+                            {dispute.job_id}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <span className="text-sm font-mono-data text-indicator-slashed">
+                            -{dispute.slash_amount.toFixed(3)} ETH
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-xs text-foreground-muted line-clamp-1">
+                            {dispute.reason}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge
+                            variant="outline"
+                            className={cn("text-xs", statusConfig[dispute.status].color)}
+                          >
+                            <StatusIcon className="h-3 w-3 mr-1" />
+                            {statusConfig[dispute.status].label}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-xs text-foreground-muted">
+                            {formatRelativeTime(dispute.created_at)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Link href={`/admin/slashing/disputes/${dispute.id}`}>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>

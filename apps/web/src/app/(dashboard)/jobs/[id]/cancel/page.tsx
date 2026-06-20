@@ -9,12 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/page-header";
 import { useJob } from "@/hooks/use-jobs";
-import { useAuthStore } from "@/stores/auth-store";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function JobCancelPage() {
   const { id } = useParams();
   const router = useRouter();
-  const user = useAuthStore((s) => s.user);
+  const { user } = useAuth();
   const { data: job } = useJob(id as string);
   const [isCancelling, setIsCancelling] = React.useState(false);
   const [done, setDone] = React.useState(false);

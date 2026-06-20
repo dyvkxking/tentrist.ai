@@ -22,6 +22,8 @@ import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ReputationBadge } from "@/components/ui/ReputationBadge";
 import { RequireAuth } from "@/components/providers/require-auth";
+import { adminGetUserByWallet } from "@/lib/supabase-admin";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface UserJob {
   id: string;
@@ -50,34 +52,6 @@ interface Transaction {
   nodeId?: string;
 }
 
-function generateMockUserDetail(address: string) {
-  const isProvider = address.includes("862964") || address.includes("fedc09") || address.includes("abcd12");
-
-  return {
-    address,
-    type: isProvider ? "provider" as const : "client" as const,
-    status: "active" as const,
-    joinedAt: Date.now() - 150 * 24 * 60 * 60 * 1000,
-    jobs: isProvider ? [] : [
-      { id: "job_a1b2c3d4", status: "running" as const, value: 2.5, nodes: 4, createdAt: Date.now() - 3600000 },
-      { id: "job_e5f6g7h8", status: "completed" as const, value: 1.2, nodes: 2, createdAt: Date.now() - 86400000 },
-      { id: "job_i9j0k1l2", status: "failed" as const, value: 3.8, nodes: 3, createdAt: Date.now() - 172800000 },
-    ] as UserJob[],
-    nodes: isProvider ? [
-      { id: "node_001", gpu: "NVIDIA A100 80GB", region: "us-east-1", status: "online" as const, reputation: 156, stake: 10.5, lastHeartbeat: Date.now() - 15000 },
-      { id: "node_002", gpu: "NVIDIA H100 80GB", region: "eu-west-1", status: "online" as const, reputation: 89, stake: 8.2, lastHeartbeat: Date.now() - 28000 },
-    ] as UserNode[] : [],
-    transactions: [
-      { id: "tx_001", type: "deposit", amount: 10, timestamp: Date.now() - 30 * 24 * 60 * 60 * 1000 },
-      { id: "tx_002", type: "payment", amount: -2.5, timestamp: Date.now() - 3600000, jobId: "job_a1b2c3d4" },
-      { id: "tx_003", type: "payment", amount: -1.2, timestamp: Date.now() - 86400000, jobId: "job_e5f6g7h8" },
-      { id: "tx_004", type: "withdrawal", amount: -5, timestamp: Date.now() - 7 * 24 * 60 * 60 * 1000 },
-    ] as Transaction[],
-    totalSpend: isProvider ? 0 : 284.5,
-    totalEarned: isProvider ? 156.8 : 0,
-    accountNotes: "",
-  };
-}
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString("en-US", {
@@ -120,9 +94,97 @@ interface AdminUserDetailContentProps {
   address: string;
 }
 
+interface ProfileRow {
+  id: string;
+  wallet_address: string;
+  user_type: string;
+  status: string;
+  created_at: string;
+}
+
+interface UserDetail {
+  address: string;
+  type: "client" | "provider";
+  status: "active" | "suspended";
+  joinedAt: number;
+  jobs: UserJob[];
+  nodes: UserNode[];
+  transactions: Transaction[];
+  totalSpend: number;
+  totalEarned: number;
+  accountNotes: string;
+}
+
 function AdminUserDetailContent({ address }: AdminUserDetailContentProps) {
-  const user = generateMockUserDetail(address);
-  const [accountNotes, setAccountNotes] = React.useState(user.accountNotes);
+  const [user, setUser] = React.useState<UserDetail | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [accountNotes, setAccountNotes] = React.useState("");
+
+  React.useEffect(() => {
+    adminGetUserByWallet(address)
+      .then((profile: ProfileRow) => {
+        const isProvider = profile.user_type === "provider";
+        setUser({
+          address: profile.wallet_address,
+          type: profile.user_type as "client" | "provider",
+          status: profile.status as "active" | "suspended",
+          joinedAt: new Date(profile.created_at).getTime(),
+          jobs: [],
+          nodes: [],
+          transactions: [],
+          totalSpend: 0,
+          totalEarned: 0,
+          accountNotes: "",
+        });
+      })
+      .catch((err) => {
+        setError(err.message || "Failed to load user");
+      });
+  }, [address]);
+
+  if (error) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Card className="bg-bg-surface/80 p-6">
+          <div className="flex items-center gap-3 text-indicator-slashed">
+            <AlertTriangle className="h-5 w-5" />
+            <span className="text-sm">{error}</span>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <Skeleton className="h-8 w-8" />
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-7 w-48" />
+              <Skeleton className="h-4 w-72" />
+            </div>
+          </div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i} className="bg-bg-surface/80">
+              <CardContent className="p-4">
+                <Skeleton className="h-4 w-16 mb-1" />
+                <Skeleton className="h-3 w-20" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card className="bg-bg-surface/80">
+          <CardContent className="p-4">
+            <Skeleton className="h-40 w-full" />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const balance = user.transactions.reduce((sum, tx) => sum + tx.amount, 0);
 

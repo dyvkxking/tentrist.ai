@@ -290,7 +290,7 @@ export default function JobDetailPage() {
           The job you&apos;re looking for doesn&apos;t exist or has been removed.
         </p>
         <Link
-          href="/jobs"
+          href="/dashboard/jobs"
           className="inline-flex items-center justify-center rounded-md font-medium border bg-transparent text-foreground-muted hover:bg-bg-surface hover:text-foreground border-border-hairline h-8 px-3 text-xs gap-1.5 transition-all"
         >
           <ArrowLeft className="h-4 w-4 mr-2" />

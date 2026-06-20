@@ -18,88 +18,18 @@ import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ReputationBadge } from "@/components/ui/ReputationBadge";
 import { RequireAuth } from "@/components/providers/require-auth";
+import { adminListNodes } from "@/lib/supabase-admin";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface Node {
   id: string;
-  address: string;
+  wallet_address: string;
   gpu: string;
   region: string;
   status: "online" | "offline" | "stale" | "slashed";
-  reputation: number;
-  stake: number;
-  lastHeartbeat: number;
-  flags: ("flagged" | "investigating" | "clean")[];
-}
-
-function generateMockNodes(): Node[] {
-  return [
-    {
-      id: "node_001",
-      address: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
-      gpu: "NVIDIA A100 80GB",
-      region: "us-east-1",
-      status: "online",
-      reputation: 156,
-      stake: 10.5,
-      lastHeartbeat: Date.now() - 15000,
-      flags: ["clean"],
-    },
-    {
-      id: "node_002",
-      address: "0x862964cE01621d2F447D1A4d5d7dE0286FA8918f",
-      gpu: "NVIDIA H100 80GB",
-      region: "eu-west-1",
-      status: "online",
-      reputation: 89,
-      stake: 8.2,
-      lastHeartbeat: Date.now() - 28000,
-      flags: ["clean"],
-    },
-    {
-      id: "node_003",
-      address: "0x3d9dCB725C5B078cC8d2E8a4f4C7bD9e5f6a8b7c",
-      gpu: "NVIDIA A100 40GB",
-      region: "ap-southeast-1",
-      status: "stale",
-      reputation: 45,
-      stake: 5.0,
-      lastHeartbeat: Date.now() - 180000,
-      flags: ["flagged"],
-    },
-    {
-      id: "node_004",
-      address: "0xfedc0987654321abcdef0123456789abcdef0123",
-      gpu: "NVIDIA RTX 4090",
-      region: "us-west-2",
-      status: "online",
-      reputation: 203,
-      stake: 15.0,
-      lastHeartbeat: Date.now() - 10000,
-      flags: ["clean"],
-    },
-    {
-      id: "node_005",
-      address: "0x2468ace13579bdfc0246f8db9310019283746fab",
-      gpu: "NVIDIA A100 80GB",
-      region: "eu-central-1",
-      status: "slashed",
-      reputation: -12,
-      stake: 2.5,
-      lastHeartbeat: Date.now() - 3600000,
-      flags: ["investigating"],
-    },
-    {
-      id: "node_006",
-      address: "0xabcd1234efgh5678ijkl9012mnop3456qrst6789",
-      gpu: "NVIDIA H100 80GB",
-      region: "us-east-1",
-      status: "online",
-      reputation: 78,
-      stake: 12.0,
-      lastHeartbeat: Date.now() - 22000,
-      flags: ["clean"],
-    },
-  ];
+  reputation_score: number;
+  total_stake: number;
+  last_heartbeat: number;
 }
 
 function formatRelativeTime(timestamp: number): string {
@@ -119,16 +49,70 @@ export default function AdminNodesPage() {
 }
 
 function AdminNodesContent() {
-  const [nodes] = React.useState<Node[]>(generateMockNodes());
+  const [nodes, setNodes] = React.useState<Node[] | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    adminListNodes()
+      .then(setNodes)
+      .catch((err) => setError(err.message || "Failed to load nodes"));
+  }, []);
+
+  if (error) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="rounded-lg border border-indicator-slashed bg-indicator-slashed/10 p-4 text-sm text-indicator-slashed">
+          {error}
+        </div>
+      </div>
+    );
+  }
+
+  if (!nodes) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i} className="bg-bg-surface/80">
+              <CardContent className="p-4">
+                <Skeleton className="h-8 w-12" />
+                <Skeleton className="h-3 w-16 mt-2" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card className="bg-bg-surface/80">
+          <CardContent className="p-4">
+            <Skeleton className="h-10 w-full" />
+          </CardContent>
+        </Card>
+        <Card className="bg-bg-surface/80">
+          <CardContent className="p-0">
+            <div className="space-y-4 p-4">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const filteredNodes = nodes.filter((node) => {
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       if (
         !node.id.toLowerCase().includes(query) &&
-        !node.address.toLowerCase().includes(query) &&
+        !node.wallet_address.toLowerCase().includes(query) &&
         !node.gpu.toLowerCase().includes(query)
       ) {
         return false;
@@ -138,8 +122,8 @@ function AdminNodesContent() {
     return true;
   });
 
-  const flaggedCount = nodes.filter((n) => n.flags.includes("flagged")).length;
-  const investigatingCount = nodes.filter((n) => n.flags.includes("investigating")).length;
+  const flaggedCount = 0;
+  const investigatingCount = 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -274,7 +258,7 @@ function AdminNodesContent() {
                         </span>
                       </div>
                       <div className="text-[10px] text-foreground-muted font-mono-data mt-0.5">
-                        {node.address.slice(0, 8)}...{node.address.slice(-6)}
+                        {node.wallet_address.slice(0, 8)}...{node.wallet_address.slice(-6)}
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -287,39 +271,20 @@ function AdminNodesContent() {
                       <StatusBadge status={node.status} showPulse />
                     </td>
                     <td className="px-4 py-3">
-                      <ReputationBadge score={node.reputation} showScore />
+                      <ReputationBadge score={node.reputation_score} showScore />
                     </td>
                     <td className="px-4 py-3 text-right">
                       <span className="text-sm font-mono-data text-foreground">
-                        {node.stake.toFixed(1)} ETH
+                        {node.total_stake.toFixed(1)} ETH
                       </span>
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-xs text-foreground-muted">
-                        {formatRelativeTime(node.lastHeartbeat)}
+                        {formatRelativeTime(node.last_heartbeat)}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex gap-1 flex-wrap">
-                        {node.flags.includes("flagged") && (
-                          <Badge variant="danger" size="sm">
-                            <Flag className="h-3 w-3 mr-0.5" />
-                            flagged
-                          </Badge>
-                        )}
-                        {node.flags.includes("investigating") && (
-                          <Badge variant="warning" size="sm">
-                            <AlertTriangle className="h-3 w-3 mr-0.5" />
-                            investigating
-                          </Badge>
-                        )}
-                        {node.flags.includes("clean") && (
-                          <Badge variant="success" size="sm">
-                            <CheckCircle2 className="h-3 w-3 mr-0.5" />
-                            clean
-                          </Badge>
-                        )}
-                      </div>
+                      <span className="text-xs text-foreground-muted">-</span>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
@@ -328,16 +293,12 @@ function AdminNodesContent() {
                             <Eye className="h-4 w-4" />
                           </Button>
                         </Link>
-                        {!node.flags.includes("flagged") && (
-                          <Button variant="ghost" size="icon" className="h-8 w-8" title="Flag Node">
-                            <Flag className="h-4 w-4 text-indicator-stale" />
-                          </Button>
-                        )}
-                        {!node.flags.includes("investigating") && (
-                          <Button variant="ghost" size="icon" className="h-8 w-8" title="Investigate">
-                            <AlertTriangle className="h-4 w-4 text-amber-400" />
-                          </Button>
-                        )}
+                        <Button variant="ghost" size="icon" className="h-8 w-8" title="Flag Node">
+                          <Flag className="h-4 w-4 text-indicator-stale" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" title="Investigate">
+                          <AlertTriangle className="h-4 w-4 text-amber-400" />
+                        </Button>
                       </div>
                     </td>
                   </tr>

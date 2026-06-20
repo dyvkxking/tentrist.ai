@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { TrendingUp } from "lucide-react";
+import { useReadContract } from "wagmi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MetricCard } from "@/components/ui/MetricCard";
 import { PageHeader } from "@/components/shared/page-header";
+import { ESCROW_ABI, CONTRACT_ADDRESSES } from "@/lib/contracts";
 
 const TOP_STAKERS = [
   { rank: 1, address: "0xEfA2b4C8d3E9F1a6B7", stake: "5.0 ETH", nodes: 3, reputation: 215 },
@@ -19,14 +21,44 @@ const MONTHLY_STAKE = [
 const MAX = Math.max(...MONTHLY_STAKE.map((m) => m.total));
 
 export default function StakeLeaderboardPage() {
+  const { data: totalStakedRaw } = useReadContract({
+    address: CONTRACT_ADDRESSES.Escrow,
+    abi: ESCROW_ABI,
+    functionName: "getTotalStaked",
+  });
+
+  const { data: stakerCountRaw } = useReadContract({
+    address: CONTRACT_ADDRESSES.Escrow,
+    abi: ESCROW_ABI,
+    functionName: "getStakerCount",
+  });
+
+  const totalStakedEth = totalStakedRaw ? Number(totalStakedRaw) / 1e18 : 0;
+  const stakerCount = Number(stakerCountRaw ?? 0);
+  const avgStakeEth = stakerCount > 0 ? totalStakedEth / stakerCount : 0;
+
   return (
     <div className="flex flex-col gap-6 max-w-3xl mx-auto">
       <PageHeader title="Stake Leaderboard" description="Top stakers on the Tentrist network" />
 
       <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard label="Total Staked" value="12,840 ETH" trend="up" trendValue="+8%" glowColor="active" />
-        <MetricCard label="Active Stakers" value="847" trend="up" trendValue="+23" />
-        <MetricCard label="Avg Stake per Node" value="10.0 ETH" />
+        <MetricCard
+          label="Total Staked"
+          value={`${totalStakedEth.toFixed(0)} ETH`}
+          trend="up"
+          trendValue="+8%"
+          glowColor="active"
+        />
+        <MetricCard
+          label="Active Stakers"
+          value={stakerCount.toString()}
+          trend="up"
+          trendValue="+23"
+        />
+        <MetricCard
+          label="Avg Stake per Node"
+          value={`${avgStakeEth.toFixed(1)} ETH`}
+        />
       </div>
 
       {/* Staking Over Time */}

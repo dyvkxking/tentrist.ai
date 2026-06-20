@@ -20,7 +20,9 @@ import { PageHeader } from "@/components/shared/page-header";
 import { LiveIndicator } from "@/components/shared/live-indicator";
 import { useJobs } from "@/hooks/use-jobs";
 import { useNodes, useNetworkStats } from "@/hooks/use-nodes";
-import { useAuthStore } from "@/stores/auth-store";
+import { useAuth } from "@/hooks/use-auth";
+import { useAccount, useReadContract } from "wagmi";
+import { ESCROW_ABI, CONTRACT_ADDRESSES } from "@/lib/contracts";
 
 // Format relative time
 function formatRelativeTime(date: Date): string {
@@ -59,10 +61,20 @@ function EmptyState({ title, description }: { title: string; description: string
 }
 
 export default function DashboardPage() {
-  const user = useAuthStore((s) => s.user);
+  const { user } = useAuth();
+  const { address, isConnected } = useAccount();
   const { data: jobs, isLoading: jobsLoading } = useJobs();
   const { data: nodes, isLoading: nodesLoading } = useNodes();
   const { data: networkStats } = useNetworkStats();
+
+  // Real Escrow stake balance via wagmi
+  const { data: myStakeRaw } = useReadContract({
+    address: CONTRACT_ADDRESSES.Escrow,
+    abi: ESCROW_ABI,
+    functionName: "getStake",
+    args: [address!],
+    query: { enabled: !!address && isConnected },
+  });
 
   // Build execution logs from real job data
   const logs: ExecutionLog[] = React.useMemo(() => {
@@ -122,7 +134,9 @@ export default function DashboardPage() {
       activeJobs,
       completedJobs,
       failedJobs,
-      serverlessBalance: "0.0000",
+      serverlessBalance: myStakeRaw
+        ? (Number(myStakeRaw) / 1e18).toFixed(4)
+        : "0.0000",
       globalNodes: totalNodes,
       onlineNodes,
       slaCompliance: totalJobs > 0
@@ -130,7 +144,7 @@ export default function DashboardPage() {
         : "—",
       pendingSlashes: nodes?.filter((n) => n.status === "slashed").length ?? 0,
     };
-  }, [jobs, nodes]);
+  }, [jobs, nodes, myStakeRaw]);
 
   return (
     <div className="flex flex-col gap-4">

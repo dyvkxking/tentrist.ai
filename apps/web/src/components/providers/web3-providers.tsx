@@ -13,7 +13,7 @@ import {
   useWriteContract,
   useWaitForTransactionReceipt,
 } from "wagmi";
-import { mainnet, sepolia } from "wagmi/chains";
+import { mainnet, sepolia, hardhat } from "wagmi/chains";
 import { QueryClient,
   QueryClientProvider,
   useQuery,
@@ -26,7 +26,6 @@ import {
   DisclaimerComponent,
 } from "@rainbow-me/rainbowkit";
 import { injected } from "wagmi/connectors";
-import { hardhat } from "viem/chains";
 import "@rainbow-me/rainbowkit/styles.css";
 
 // Create wagmi config
@@ -38,7 +37,7 @@ export const wagmiConfig = createConfig({
   transports: {
     [mainnet.id]: http(),
     [sepolia.id]: http(),
-    [hardhat.id]: http(),
+    [hardhat.id]: http("http://127.0.0.1:8545"),
   },
 });
 
@@ -46,8 +45,8 @@ export const wagmiConfig = createConfig({
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 5,
-      refetchInterval: 1000 * 30,
+      staleTime: 1000 * 60 * 5,  // 5 min — don't refetch within window
+      refetchInterval: false,      // disable background polling by default
     },
   },
 });

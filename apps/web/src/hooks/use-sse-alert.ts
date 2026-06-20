@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useSSE, SSEAlertEvent, createSSEUrl } from "./use-sse";
+import { supabase } from "@/lib/supabase";
 import { toast } from "@/hooks/use-toast";
 
 export interface AlertItem {
@@ -17,44 +17,61 @@ export interface AlertItem {
 export function useAlertUpdates(onAlert?: (alert: AlertItem) => void) {
   const [alerts, setAlerts] = React.useState<AlertItem[]>([]);
 
-  const handleMessage = React.useCallback(
-    (event: SSEAlertEvent) => {
-      if (event.type === "alert") {
-        const alert: AlertItem = {
-          id: `alert_${event.timestamp}_${Math.random().toString(36).slice(2, 8)}`,
-          severity: event.severity,
-          title: event.title,
-          message: event.message,
-          timestamp: event.timestamp,
-          metadata: event.metadata,
-        };
+  const handleAlert = React.useCallback(
+    (alert: AlertItem) => {
+      setAlerts((prev) => [alert, ...prev].slice(0, 50));
 
-        setAlerts((prev) => [alert, ...prev].slice(0, 50));
-
-        // Show toast immediately
-        if (event.severity === "critical") {
-          toast.error(event.title, event.message);
-        } else if (event.severity === "warning") {
-          toast.warning(event.title, event.message);
-        } else {
-          toast.info(event.title, event.message);
-        }
-
-        onAlert?.(alert);
+      if (alert.severity === "critical") {
+        toast.error(alert.title, alert.message);
+      } else if (alert.severity === "warning") {
+        toast.warning(alert.title, alert.message);
+      } else {
+        toast.info(alert.title, alert.message);
       }
+
+      onAlert?.(alert);
     },
     [onAlert]
   );
 
-  const url = React.useMemo(
-    () => createSSEUrl("/api/v1/sse/alerts", {}),
-    []
-  );
+  React.useEffect(() => {
+    // Subscribe to alerts table inserts (new alerts)
+    const channel = supabase
+      .channel("public:alerts")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "alerts" },
+        (payload) => {
+          const a = payload.new as {
+            id: string;
+            severity: "info" | "warning" | "critical";
+            message: string;
+            node_id?: string;
+            job_id?: string;
+            created_at: string;
+          };
 
-  const { isConnected } = useSSE<SSEAlertEvent>(url, {
-    onMessage: handleMessage,
-    enabled: true,
-  });
+          const alert: AlertItem = {
+            id: a.id,
+            severity: a.severity,
+            title: `Alert: ${a.severity}`,
+            message: a.message,
+            timestamp: new Date(a.created_at).getTime(),
+            metadata: {
+              node_id: a.node_id ?? "",
+              job_id: a.job_id ?? "",
+            },
+          };
+
+          handleAlert(alert);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [handleAlert]);
 
   const dismissAlert = React.useCallback((id: string) => {
     setAlerts((prev) =>
@@ -68,5 +85,5 @@ export function useAlertUpdates(onAlert?: (alert: AlertItem) => void) {
 
   const activeAlerts = alerts.filter((a) => !a.dismissed);
 
-  return { alerts: activeAlerts, dismissAlert, clearAlerts, isConnected };
+  return { alerts: activeAlerts, dismissAlert, clearAlerts, isConnected: true };
 }

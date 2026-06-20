@@ -71,6 +71,12 @@ export type Node = {
   price_per_minute_usd: number
   created_at: string
   updated_at: string
+  // Migration 004 columns
+  stake_amount?: string
+  vram_used_mb?: number
+  cpu_cores?: number
+  uptime_seconds?: number
+  total_jobs_failed?: number
 }
 
 export type Job = {
@@ -249,4 +255,93 @@ export const nodesApi = {
       })
     if (error) throw error
   }
+}
+
+// Notification preference keys
+export type NotifPrefKey =
+  | 'jobCompleted' | 'jobFailed' | 'slaBreached' | 'nodeOffline'
+  | 'slashEvent' | 'weeklyReport' | 'priceAlerts' | 'newJobOffer'
+
+export interface NotificationPrefs {
+  jobCompleted: boolean
+  jobFailed: boolean
+  slaBreached: boolean
+  nodeOffline: boolean
+  slashEvent: boolean
+  weeklyReport: boolean
+  priceAlerts: boolean
+  newJobOffer: boolean
+}
+
+export interface NodeProviderPrefs {
+  uptimeSLA: string
+  minJobPrice: string
+  autoAccept: boolean
+  region: string
+}
+
+export const prefsApi = {
+  // Notification prefs: get all as NotificationPrefs object
+  getNotificationPrefs: async (): Promise<NotificationPrefs> => {
+    const defaults: NotificationPrefs = {
+      jobCompleted: true, jobFailed: true, slaBreached: true,
+      nodeOffline: true, slashEvent: true, weeklyReport: false,
+      priceAlerts: true, newJobOffer: false,
+    }
+    const { data, error } = await supabase
+      .from('user_notification_prefs')
+      .select('key, value')
+    if (error || !data) return defaults
+    const prefs = { ...defaults }
+    for (const row of data) {
+      if (row.key in prefs) {
+        (prefs as Record<string, boolean>)[row.key] = row.value === 'true'
+      }
+    }
+    return prefs
+  },
+
+  // Save individual notification pref
+  setNotificationPref: async (key: NotifPrefKey, value: boolean) => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    const { error } = await supabase
+      .from('user_notification_prefs')
+      .upsert({ user_id: user.id, key, value: String(value) },
+        { onConflict: 'user_id,key' })
+    if (error) throw error
+  },
+
+  // Node provider prefs
+  getNodeProviderPrefs: async (): Promise<NodeProviderPrefs> => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { uptimeSLA: '99.5', minJobPrice: '0.001', autoAccept: false, region: 'auto' }
+    const { data, error } = await supabase
+      .from('user_node_provider_prefs')
+      .select('*')
+      .eq('user_id', user.id)
+      .single()
+    if (error || !data) return { uptimeSLA: '99.5', minJobPrice: '0.001', autoAccept: false, region: 'auto' }
+    return {
+      uptimeSLA: String(data.uptime_sla),
+      minJobPrice: String(data.min_job_price_eth),
+      autoAccept: data.auto_accept_jobs,
+      region: data.preferred_region,
+    }
+  },
+
+  saveNodeProviderPrefs: async (prefs: NodeProviderPrefs) => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    const { error } = await supabase
+      .from('user_node_provider_prefs')
+      .upsert({
+        user_id: user.id,
+        uptime_sla: parseFloat(prefs.uptimeSLA),
+        min_job_price_eth: parseFloat(prefs.minJobPrice),
+        preferred_region: prefs.region,
+        auto_accept_jobs: prefs.autoAccept,
+      }, { onConflict: 'user_id' })
+    if (error) throw error
+  },
 }

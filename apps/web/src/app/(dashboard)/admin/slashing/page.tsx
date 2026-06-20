@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { RequireAuth } from "@/components/providers/require-auth";
+import { adminListSlashEvents } from "@/lib/supabase-admin";
 import {
   Dialog,
   DialogContent,
@@ -30,130 +31,34 @@ import {
 
 interface SlashEvent {
   id: string;
-  nodeId: string;
-  jobId: string;
-  operatorAddress: string;
+  node_id: string;
+  job_id: string;
+  operator_address: string;
   amount: number;
   reason: string;
-  timestamp: number;
+  created_at: string;
   status: "pending" | "executed" | "disputed" | "overridden";
-  disputedAt?: number;
-  resolvedAt?: number;
-  slaDetails?: {
-    requiredUptime: number;
-    actualUptime: number;
-    requiredThroughput: number;
-    actualThroughput: number;
-    missedHeartbeats: number;
+  disputed_at?: string;
+  resolved_at?: string;
+  sla_details?: {
+    required_uptime: number;
+    actual_uptime: number;
+    required_throughput: number;
+    actual_throughput: number;
+    missed_heartbeats: number;
   };
-  txHash?: string;
+  tx_hash?: string;
 }
 
-function generateMockSlashEvents(): SlashEvent[] {
-  return [
-    {
-      id: "slash_001",
-      nodeId: "node_0087",
-      jobId: "job_a1b2c3d4",
-      operatorAddress: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
-      amount: 0.45,
-      reason: "SLA breach: missed heartbeat intervals",
-      timestamp: Date.now() - 2 * 60 * 60 * 1000,
-      status: "pending",
-      slaDetails: {
-        requiredUptime: 95,
-        actualUptime: 87.3,
-        requiredThroughput: 100,
-        actualThroughput: 78,
-        missedHeartbeats: 12,
-      },
-      txHash: "0xabc123...def456",
-    },
-    {
-      id: "slash_002",
-      nodeId: "node_0142",
-      jobId: "job_e5f6g7h8",
-      operatorAddress: "0x862964cE01621d2F447D1A4d5d7dE0286FA8918f",
-      amount: 0.32,
-      reason: "VRAM exceeded 95% threshold",
-      timestamp: Date.now() - 5 * 60 * 60 * 1000,
-      status: "pending",
-      slaDetails: {
-        requiredUptime: 98,
-        actualUptime: 91.2,
-        requiredThroughput: 150,
-        actualThroughput: 142,
-        missedHeartbeats: 3,
-      },
-      txHash: "0x789xyz...abc123",
-    },
-    {
-      id: "slash_003",
-      nodeId: "node_0203",
-      jobId: "job_i9j0k1l2",
-      operatorAddress: "0x3d9dCB725C5B078cC8d2E8a4f4C7bD9e5f6a8b7c",
-      amount: 0.78,
-      reason: "Latency SLA breach: avg 350ms > 200ms target",
-      timestamp: Date.now() - 24 * 60 * 60 * 1000,
-      status: "executed",
-      slaDetails: {
-        requiredUptime: 95,
-        actualUptime: 88.5,
-        requiredThroughput: 100,
-        actualThroughput: 95,
-        missedHeartbeats: 5,
-      },
-      txHash: "0xdef456...ghi789",
-    },
-    {
-      id: "slash_004",
-      nodeId: "node_0056",
-      jobId: "job_m3n4o5p6",
-      operatorAddress: "0xfedc0987654321abcdef0123456789abcdef0123",
-      amount: 0.21,
-      reason: "Missed checkpoint deadlines",
-      timestamp: Date.now() - 48 * 60 * 60 * 1000,
-      status: "disputed",
-      disputedAt: Date.now() - 24 * 60 * 60 * 1000,
-      slaDetails: {
-        requiredUptime: 95,
-        actualUptime: 92.1,
-        requiredThroughput: 80,
-        actualThroughput: 79,
-        missedHeartbeats: 8,
-      },
-    },
-    {
-      id: "slash_005",
-      nodeId: "node_0099",
-      jobId: "job_q7r8s9t0",
-      operatorAddress: "0x2468ace13579bdfc0246f8db9310019283746fab",
-      amount: 0.55,
-      reason: "SLA breach: uptime 87% < 95% required",
-      timestamp: Date.now() - 72 * 60 * 60 * 1000,
-      status: "overridden",
-      resolvedAt: Date.now() - 48 * 60 * 60 * 1000,
-      slaDetails: {
-        requiredUptime: 95,
-        actualUptime: 87.0,
-        requiredThroughput: 100,
-        actualThroughput: 92,
-        missedHeartbeats: 15,
-      },
-      txHash: "0x111222...333444",
-    },
-  ];
-}
-
-function formatRelativeTime(timestamp: number): string {
-  const diff = Date.now() - timestamp;
+function formatRelativeTime(timestamp: string): string {
+  const diff = Date.now() - new Date(timestamp).getTime();
   if (diff < 60000) return "Just now";
   if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
   return `${Math.floor(diff / 86400000)}d ago`;
 }
 
-function formatDate(timestamp: number): string {
+function formatDate(timestamp: string): string {
   return new Date(timestamp).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -195,7 +100,9 @@ export default function AdminSlashingPage() {
 }
 
 function AdminSlashingContent() {
-  const [events, setEvents] = React.useState<SlashEvent[]>(generateMockSlashEvents());
+  const [events, setEvents] = React.useState<SlashEvent[] | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = React.useState<SlashEvent | null>(null);
@@ -203,24 +110,41 @@ function AdminSlashingContent() {
   const [showOverrideModal, setShowOverrideModal] = React.useState(false);
   const [overrideReason, setOverrideReason] = React.useState("");
 
-  const filteredEvents = events.filter((event) => {
+  React.useEffect(() => {
+    async function loadData() {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await adminListSlashEvents();
+        setEvents(data as SlashEvent[]);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load slash events");
+        setEvents([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
+  const filteredEvents = events?.filter((event) => {
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       if (
-        !event.nodeId.toLowerCase().includes(query) &&
-        !event.jobId.toLowerCase().includes(query) &&
-        !event.operatorAddress.toLowerCase().includes(query)
+        !event.node_id.toLowerCase().includes(query) &&
+        !event.job_id.toLowerCase().includes(query) &&
+        !event.operator_address.toLowerCase().includes(query)
       ) {
         return false;
       }
     }
     if (statusFilter && event.status !== statusFilter) return false;
     return true;
-  });
+  }) ?? [];
 
-  const pendingCount = events.filter((e) => e.status === "pending").length;
-  const disputedCount = events.filter((e) => e.status === "disputed").length;
-  const totalSlashed = events.reduce((sum, e) => (e.status === "executed" ? sum + e.amount : sum), 0);
+  const pendingCount = events?.filter((e) => e.status === "pending").length ?? 0;
+  const disputedCount = events?.filter((e) => e.status === "disputed").length ?? 0;
+  const totalSlashed = events?.reduce((sum, e) => (e.status === "executed" ? sum + e.amount : sum), 0) ?? 0;
 
   const openDetailModal = (event: SlashEvent) => {
     setSelectedEvent(event);
@@ -236,7 +160,7 @@ function AdminSlashingContent() {
   const overrideSlash = () => {
     if (!selectedEvent) return;
     setEvents((prev) =>
-      prev.map((e) =>
+      (prev || []).map((e) =>
         e.id === selectedEvent.id
           ? { ...e, status: "overridden" as const, resolvedAt: Date.now() }
           : e
@@ -249,7 +173,7 @@ function AdminSlashingContent() {
 
   const executeSlash = (id: string) => {
     setEvents((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, status: "executed" as const } : e))
+      (prev || []).map((e) => (e.id === id ? { ...e, status: "executed" as const } : e))
     );
     setShowDetailModal(false);
     setSelectedEvent(null);
@@ -279,31 +203,47 @@ function AdminSlashingContent() {
       <div className="grid gap-3 md:grid-cols-4">
         <Card className="bg-bg-surface/80">
           <CardContent className="p-4">
-            <div className="text-2xl font-semibold font-mono-data">{events.length}</div>
+            {loading ? (
+              <div className="h-8 w-12 bg-bg-base rounded animate-pulse" />
+            ) : (
+              <div className="text-2xl font-semibold font-mono-data">{events?.length ?? 0}</div>
+            )}
             <div className="text-xs text-foreground-muted">Total Events</div>
           </CardContent>
         </Card>
         <Card className="bg-bg-surface/80">
           <CardContent className="p-4">
-            <div className="text-2xl font-semibold font-mono-data text-indicator-stale">
-              {pendingCount}
-            </div>
+            {loading ? (
+              <div className="h-8 w-12 bg-bg-base rounded animate-pulse" />
+            ) : (
+              <div className="text-2xl font-semibold font-mono-data text-indicator-stale">
+                {pendingCount}
+              </div>
+            )}
             <div className="text-xs text-foreground-muted">Pending</div>
           </CardContent>
         </Card>
         <Card className="bg-bg-surface/80">
           <CardContent className="p-4">
-            <div className="text-2xl font-semibold font-mono-data text-blue-400">
-              {disputedCount}
-            </div>
+            {loading ? (
+              <div className="h-8 w-12 bg-bg-base rounded animate-pulse" />
+            ) : (
+              <div className="text-2xl font-semibold font-mono-data text-blue-400">
+                {disputedCount}
+              </div>
+            )}
             <div className="text-xs text-foreground-muted">Disputed</div>
           </CardContent>
         </Card>
         <Card className="bg-bg-surface/80">
           <CardContent className="p-4">
-            <div className="text-2xl font-semibold font-mono-data text-indicator-slashed">
-              {totalSlashed.toFixed(3)} ETH
-            </div>
+            {loading ? (
+              <div className="h-8 w-16 bg-bg-base rounded animate-pulse" />
+            ) : (
+              <div className="text-2xl font-semibold font-mono-data text-indicator-slashed">
+                {totalSlashed.toFixed(3)} ETH
+              </div>
+            )}
             <div className="text-xs text-foreground-muted">Total Slashed</div>
           </CardContent>
         </Card>
@@ -353,50 +293,64 @@ function AdminSlashingContent() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="divide-y divide-hairline max-h-[600px] overflow-y-auto">
-              {filteredEvents.map((event) => {
-                const StatusIcon = statusConfig[event.status].icon;
-                return (
-                  <button
-                    key={event.id}
-                    onClick={() => openDetailModal(event)}
-                    className={cn(
-                      "w-full text-left p-4 hover:bg-bg-base/50 transition-colors",
-                      selectedEvent?.id === event.id && "bg-bg-base/50"
-                    )}
-                  >
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-mono-data text-foreground">
-                          {event.nodeId}
+            {loading ? (
+              <div className="p-4 space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-20 bg-bg-base rounded animate-pulse" />
+                ))}
+              </div>
+            ) : error ? (
+              <div className="p-8 text-center text-sm text-indicator-slashed">{error}</div>
+            ) : filteredEvents.length === 0 ? (
+              <div className="p-8 text-center text-sm text-foreground-muted">
+                No slash events found
+              </div>
+            ) : (
+              <div className="divide-y divide-hairline max-h-[600px] overflow-y-auto">
+                {filteredEvents.map((event) => {
+                  const StatusIcon = statusConfig[event.status].icon;
+                  return (
+                    <button
+                      key={event.id}
+                      onClick={() => openDetailModal(event)}
+                      className={cn(
+                        "w-full text-left p-4 hover:bg-bg-base/50 transition-colors",
+                        selectedEvent?.id === event.id && "bg-bg-base/50"
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-mono-data text-foreground">
+                            {event.node_id}
+                          </span>
+                          <Badge
+                            variant="outline"
+                            className={cn("text-xs", statusConfig[event.status].color)}
+                          >
+                            <StatusIcon className="h-3 w-3 mr-1" />
+                            {statusConfig[event.status].label}
+                          </Badge>
+                        </div>
+                        <span className="text-xs font-mono-data text-indicator-slashed">
+                          -{event.amount.toFixed(3)} ETH
                         </span>
-                        <Badge
-                          variant="outline"
-                          className={cn("text-xs", statusConfig[event.status].color)}
-                        >
-                          <StatusIcon className="h-3 w-3 mr-1" />
-                          {statusConfig[event.status].label}
-                        </Badge>
                       </div>
-                      <span className="text-xs font-mono-data text-indicator-slashed">
-                        -{event.amount.toFixed(3)} ETH
-                      </span>
-                    </div>
-                    <div className="text-xs text-foreground-muted mb-1 line-clamp-1">
-                      {event.reason}
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-foreground-muted font-mono-data">
-                        {event.jobId}
-                      </span>
-                      <span className="text-xs text-foreground-muted">
-                        {formatRelativeTime(event.timestamp)}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+                      <div className="text-xs text-foreground-muted mb-1 line-clamp-1">
+                        {event.reason}
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-foreground-muted font-mono-data">
+                          {event.job_id}
+                        </span>
+                        <span className="text-xs text-foreground-muted">
+                          {formatRelativeTime(event.created_at)}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -417,7 +371,7 @@ function AdminSlashingContent() {
                 </div>
                 <CardDescription>
                   {statusConfig[selectedEvent.status].label} —{" "}
-                  {formatRelativeTime(selectedEvent.timestamp)}
+                  {formatRelativeTime(selectedEvent.created_at)}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -426,20 +380,20 @@ function AdminSlashingContent() {
                   <div className="flex justify-between text-sm">
                     <span className="text-foreground-muted">Node ID</span>
                     <span className="font-mono-data text-foreground">
-                      {selectedEvent.nodeId}
+                      {selectedEvent.node_id}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-foreground-muted">Job ID</span>
                     <span className="font-mono-data text-indicator-active">
-                      {selectedEvent.jobId}
+                      {selectedEvent.job_id}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-foreground-muted">Operator</span>
                     <span className="font-mono-data text-foreground text-xs">
-                      {selectedEvent.operatorAddress.slice(0, 8)}...
-                      {selectedEvent.operatorAddress.slice(-6)}
+                      {selectedEvent.operator_address.slice(0, 8)}...
+                      {selectedEvent.operator_address.slice(-6)}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
@@ -459,7 +413,7 @@ function AdminSlashingContent() {
                 </div>
 
                 {/* SLA Details */}
-                {selectedEvent.slaDetails && (
+                {selectedEvent.sla_details && (
                   <div>
                     <span className="text-xs text-foreground-muted mb-2 block">
                       SLA Breach Details
@@ -468,27 +422,27 @@ function AdminSlashingContent() {
                       <div className="p-2 bg-bg-base rounded text-center">
                         <div className="text-xs text-foreground-muted">Uptime</div>
                         <div className="font-mono-data text-sm">
-                          {selectedEvent.slaDetails.actualUptime.toFixed(1)}%
+                          {selectedEvent.sla_details.actual_uptime.toFixed(1)}%
                           <span className="text-indicator-slashed text-xs">
                             {" "}
-                            / {selectedEvent.slaDetails.requiredUptime}%
+                            / {selectedEvent.sla_details.required_uptime}%
                           </span>
                         </div>
                       </div>
                       <div className="p-2 bg-bg-base rounded text-center">
                         <div className="text-xs text-foreground-muted">Throughput</div>
                         <div className="font-mono-data text-sm">
-                          {selectedEvent.slaDetails.actualThroughput}
+                          {selectedEvent.sla_details.actual_throughput}
                           <span className="text-indicator-slashed text-xs">
                             {" "}
-                            / {selectedEvent.slaDetails.requiredThroughput}
+                            / {selectedEvent.sla_details.required_throughput}
                           </span>
                         </div>
                       </div>
                       <div className="p-2 bg-bg-base rounded text-center col-span-2">
                         <div className="text-xs text-foreground-muted">Missed Heartbeats</div>
                         <div className="font-mono-data text-indicator-slashed">
-                          {selectedEvent.slaDetails.missedHeartbeats}
+                          {selectedEvent.sla_details.missed_heartbeats}
                         </div>
                       </div>
                     </div>
@@ -499,18 +453,18 @@ function AdminSlashingContent() {
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-foreground-muted">Created</span>
-                    <span className="text-foreground">{formatDate(selectedEvent.timestamp)}</span>
+                    <span className="text-foreground">{formatDate(selectedEvent.created_at)}</span>
                   </div>
-                  {selectedEvent.disputedAt && (
+                  {selectedEvent.disputed_at && (
                     <div className="flex justify-between text-sm">
                       <span className="text-foreground-muted">Disputed</span>
-                      <span className="text-blue-400">{formatDate(selectedEvent.disputedAt)}</span>
+                      <span className="text-blue-400">{formatDate(selectedEvent.disputed_at)}</span>
                     </div>
                   )}
-                  {selectedEvent.resolvedAt && (
+                  {selectedEvent.resolved_at && (
                     <div className="flex justify-between text-sm">
                       <span className="text-foreground-muted">Resolved</span>
-                      <span className="text-amber-400">{formatDate(selectedEvent.resolvedAt)}</span>
+                      <span className="text-amber-400">{formatDate(selectedEvent.resolved_at)}</span>
                     </div>
                   )}
                 </div>
@@ -537,9 +491,9 @@ function AdminSlashingContent() {
                 )}
 
                 {/* Transaction Link */}
-                {selectedEvent.txHash && (
+                {selectedEvent.tx_hash && (
                   <a
-                    href={`https://etherscan.io/tx/${selectedEvent.txHash}`}
+                    href={`https://etherscan.io/tx/${selectedEvent.tx_hash}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center justify-center rounded-md font-medium border bg-transparent text-foreground border-border-hairline hover:bg-bg-surface hover:border-zinc-700 h-9 px-3 text-xs gap-1.5 transition-all w-full"
@@ -579,20 +533,20 @@ function AdminSlashingContent() {
                 <div>
                   <div className="text-xs text-foreground-muted mb-1">Node ID</div>
                   <div className="font-mono-data text-sm bg-bg-base p-2 rounded">
-                    {selectedEvent.nodeId}
+                    {selectedEvent.node_id}
                   </div>
                 </div>
                 <div>
                   <div className="text-xs text-foreground-muted mb-1">Job ID</div>
                   <div className="font-mono-data text-sm bg-bg-base p-2 rounded text-indicator-active">
-                    {selectedEvent.jobId}
+                    {selectedEvent.job_id}
                   </div>
                 </div>
               </div>
               <div>
                 <div className="text-xs text-foreground-muted mb-1">Operator Address</div>
                 <div className="font-mono-data text-xs bg-bg-base p-2 rounded break-all">
-                  {selectedEvent.operatorAddress}
+                  {selectedEvent.operator_address}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -613,35 +567,35 @@ function AdminSlashingContent() {
                 <div className="text-xs text-foreground-muted mb-1">Reason</div>
                 <div className="text-sm bg-bg-base p-3 rounded">{selectedEvent.reason}</div>
               </div>
-              {selectedEvent.slaDetails && (
+              {selectedEvent.sla_details && (
                 <div>
                   <div className="text-xs text-foreground-muted mb-2">SLA Metrics</div>
                   <div className="bg-bg-base rounded-lg p-3 space-y-2">
                     <div className="flex justify-between text-sm">
                       <span>Uptime</span>
                       <span className="font-mono-data">
-                        {selectedEvent.slaDetails.actualUptime.toFixed(1)}% /{" "}
-                        {selectedEvent.slaDetails.requiredUptime}%
+                        {selectedEvent.sla_details.actual_uptime.toFixed(1)}% /{" "}
+                        {selectedEvent.sla_details.required_uptime}%
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span>Throughput</span>
                       <span className="font-mono-data">
-                        {selectedEvent.slaDetails.actualThroughput} /{" "}
-                        {selectedEvent.slaDetails.requiredThroughput}
+                        {selectedEvent.sla_details.actual_throughput} /{" "}
+                        {selectedEvent.sla_details.required_throughput}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span>Missed Heartbeats</span>
                       <span className="font-mono-data text-indicator-slashed">
-                        {selectedEvent.slaDetails.missedHeartbeats}
+                        {selectedEvent.sla_details.missed_heartbeats}
                       </span>
                     </div>
                   </div>
                 </div>
               )}
               <div className="text-xs text-foreground-muted">
-                Timestamp: {formatDate(selectedEvent.timestamp)}
+                Timestamp: {formatDate(selectedEvent.created_at)}
               </div>
             </div>
           )}
@@ -690,7 +644,7 @@ function AdminSlashingContent() {
                   Warning
                 </div>
                 <p className="text-xs text-foreground-muted">
-                  Overriding slash event {selectedEvent.id} for node {selectedEvent.nodeId}. This
+                  Overriding slash event {selectedEvent.id} for node {selectedEvent.node_id}. This
                   will credit {selectedEvent.amount.toFixed(3)} ETH back to the node operator.
                 </p>
               </div>

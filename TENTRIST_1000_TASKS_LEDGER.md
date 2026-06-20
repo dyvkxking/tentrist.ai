@@ -1,0 +1,1018 @@
+# TENTRIST 1000-TASK ARCHITECTURAL LEDGER
+
+Generated: 2026-06-19T09:51:35.254Z
+
+## Overview
+
+This ledger contains exactly 1,000 granular engineering tasks for the Tentrist DePIN GPU Orchestration Protocol.
+
+| Block | Range | Category |
+|-------|-------|----------|
+| 1 | 1-200 | Smart Contract Layer (Solidity/EVM) |
+| 2 | 201-400 | Go Backend & Concurrent Core Orchestrator |
+| 3 | 401-600 | Distributed Daemon & Metric Harvester |
+| 4 | 601-800 | Next.js 14+ App Router Enterprise Dashboard |
+| 5 | 801-1000 | Automated Fault Generation & Playwright Test Loop |
+
+---
+
+- [x] Task 1: Initialize Escrow.sol compiler version to ^0.8.20 ✓
+- [x] Task 2: Import OpenZeppelin ReentrancyGuard into Escrow.sol ✓
+- [x] Task 3: Import OpenZeppelin SafeERC20 into Escrow.sol (removed SafeERC20 - native ETH) ✓
+- [x] Task 4: Define Stake struct with fields: owner, amount, timestamp, locked, unlockTime ✓
+- [x] Task 5: Create stakes mapping: mapping(address => Stake) private _stakes ✓
+- [x] Task 6: Create stakesByOwner mapping: mapping(address => uint256[]) public stakesByOwner ✓
+- [x] Task 7: Define StakeDeposited event with amount, sender ✓
+- [x] Task 8: Define StakeWithdrawn event with amount, recipient ✓
+- [x] Task 9: Define StakeSlashed event with amount, reason ✓
+- [x] Task 10: Add onlyOwner modifier to withdrawStake function ✓
+- [x] Task 11: Add onlyWhileUnlocked modifier checking lock status (via onlyStaked + lockStake/unlockStake) ✓
+- [x] Task 12: Implement depositStake function ✓
+- [x] Task 13: Implement withdrawStake function with ReentrancyGuard ✓
+- [x] Task 14: Implement slashStake function onlySlasher ✓
+- [x] Task 15: Add getStake function returning stake by node ✓
+- [x] Task 16: Add getStakesByOwner function (via getStakeDetails) ✓
+- [x] Task 17: Add getTotalStaked function ✓
+- [x] Task 18: Add getStakerCount function ✓
+- [x] Task 19: Implement pauseStake function for emergency pause ✓
+- [x] Task 20: Implement unpauseStake function for emergency unpause ✓
+- [x] Task 21: Add stakeLockDuration public variable with setter ✓
+- [x] Task 22: Implement _beforeWithdraw hook for child contract overrides
+- [x] Task 23: Implement _afterSlash hook for child contract overrides
+- [x] Task 24: Add emergencyWithdraw function ✓
+- [x] Task 25: Create ESCROW_VERSION constant string for upgrade tracking ✓
+- [x] Task 26: Implement supportsInterface for ERC165 interface detection
+- [x] Task 27: Add receive function accepting native token deposits ✓
+- [x] Task 28: Add fallback function delegating calls properly
+- [x] Task 29: Implement renounceOwnership with guardrails
+- [x] Task 30: Add stakeIndex mapping ✓
+- [x] Task 31: Create pendingWithdrawals mapping ✓
+- [x] Task 32: Add claimWithdrawal function ✓
+- [x] Task 33: Implement _emitStakeMetrics (via events) ✓
+- [x] Task 34: Add minimumStakeAmount (via MIN_STAKE constant) ✓
+- [x] Task 35: Add maximumStakeAmount public variable with validation
+- [x] Task 36: Implement bulkWithdraw for gas-efficient multiple withdrawals
+- [x] Task 37: Add stakeHistory mapping: mapping(address => Stake[]) for audit
+- [x] Task 38: Implement _validateStakeAmount internal pure function
+- [x] Task 39: Add getStakeCount function returning total stakes per owner
+- [x] Task 40: Implement autoCompound function for reward reinvestment
+- [x] Task 41: Add compoundStake function with reinvest logic
+- [x] Task 42: Create StakeChanged event for indexing stake modifications
+- [x] Task 43: Add _requireNotPaused modifier to state-changing functions
+- [x] Task 44: Implement _transferTokens internal function for withdrawal
+- [x] Task 45: Add getContractBalance function returning escrow token balance
+- [x] Task 46: Initialize SLAContract.sol compiler version to ^0.8.20
+- [x] Task 47: Define SLA struct with: jobId, client, provider, uptimeSLA, throughputSLA, deadline
+- [x] Task 48: Create SLAs mapping: mapping(bytes32 => SLA) public slas
+- [x] Task 49: Define SLA Created event with jobId and terms
+- [x] Task 50: Define SLA Breached event with jobId and penalty
+- [x] Task 51: Define SLA Fulfilled event with jobId and finalMetrics
+- [x] Task 52: Add onlyAuthorized verification in createSLA function
+- [x] Task 53: Implement createSLA function registering new SLA terms
+- [x] Task 54: Add getSLA function retrieving SLA by job ID
+- [x] Task 55: Add updateSLA function modifying existing SLA terms
+- [x] Task 56: Add recordUptimeCheck function with timestamp and availability
+- [x] Task 57: Add recordThroughputCheck function with bytesProcessed
+- [x] Task 58: Add calculatePenalty function based on breach severity
+- [x] Task 59: Implement getSLAMetrics function returning performance data
+- [x] Task 60: Create breachedSLAs mapping: mapping(bytes32 => bool)
+- [x] Task 61: Add isSLABreached function checking breach status
+- [x] Task 62: Add getPenaltyAmount function calculating financial penalty
+- [x] Task 63: Implement _recordSLAViolation internal function
+- [x] Task 64: Create historicalMetrics mapping: mapping(bytes32 => Checkpoint[])
+- [x] Task 65: Add submitCheckpoint function for periodic metrics submission
+- [x] Task 66: Add getCheckpointCount function for SLA audit trail
+- [x] Task 67: Implement verifySLACompliance function checking all terms
+- [x] Task 68: Add getRemainingTime function calculating deadline buffer
+- [x] Task 69: Create slaClient mapping: mapping(bytes32 => address) for client lookup
+- [x] Task 70: Add onlySLAClient modifier restricting access to client
+- [x] Task 71: Add onlySLAProvider modifier restricting access to provider
+- [x] Task 72: Implement _validateCheckpointTimestamps internal function
+- [x] Task 73: Add getCurrentUptimePercentage function
+- [x] Task 74: Add getCurrentThroughputRate function
+- [x] Task 75: Implement _emitSLAMetrics for real-time monitoring
+- [x] Task 76: Create SLA_METRICS_PERIOD constant for averaging window
+- [x] Task 77: Add emergencyTerminateSLA function for critical failures
+- [x] Task 78: Add extendDeadline function with client approval
+- [x] Task 79: Implement getSLARating function scoring provider performance
+- [x] Task 80: Add submitFinalMetrics function closing SLA cycle
+- [x] Task 81: Create pendingTerminations mapping for graceful shutdowns
+- [x] Task 82: Add approveTermination function for mutual termination
+- [x] Task 83: Implement _calculateUptimeScore internal pure function
+- [x] Task 84: Add getPenaltyRecipient function returning slash beneficiary
+- [x] Task 85: Create slaVersion mapping: mapping(bytes32 => uint256) for upgrades
+- [x] Task 86: Add migrateSLA function for contract upgrades
+- [x] Task 87: Implement supportsInterface for SLA interface detection
+- [x] Task 88: Initialize SlashManager.sol compiler version to ^0.8.20
+- [x] Task 89: Import Escrow interface for stake interaction
+- [x] Task 90: Define SlashReason enum: NodeOffline, SlowResponse, InvalidResult, MissedHeartbeat
+- [x] Task 91: Define SlashEvent struct with: eventId, node, amount, reason, timestamp, jobId
+- [x] Task 92: Create slashEvents mapping: mapping(bytes32 => SlashEvent) public slashEvents
+- [x] Task 93: Create nodeSlashHistory mapping: mapping(address => bytes32[])
+- [x] Task 94: Define NodeSlashed event with node, amount, reason
+- [x] Task 95: Define DisputeRaised event with eventId and evidence
+- [x] Task 96: Add onlyValidator modifier to slash functions
+- [x] Task 97: Implement slashNode function with evidence storage
+- [x] Task 98: Add getSlashEvent function retrieving slash details
+- [x] Task 99: Add getSlashCount function counting total slashes for node
+- [x] Task 100: Create SLASH_BASE_PERCENT constant: 1000 (10%)
+- [x] Task 101: Add getSlashingStats function returning slash frequency data
+- [x] Task 102: Add getSlashGracePeriod function for first-offense leniency
+- [x] Task 103: Add setSlashGracePeriod function updating leniency period
+- [x] Task 104: Add _calculateBaselineSlash internal function
+- [x] Task 105: Add getStakeRequiredForTier function mapping reputation to stake
+- [x] Task 106: Create tierThresholds array: [300, 500, 700, 900] for reputation tiers
+- [x] Task 107: Add getNodeTier function returning current reputation tier
+- [x] Task 108: Implement _emitTierChange for tier transition events
+- [x] Task 109: Add calculateStakingYield function returning APY estimate
+- [x] Task 110: Add getRewardsAccrued function for pending reward calculation
+- [x] Task 111: Add claimReward function withdrawing accrued rewards
+- [x] Task 112: Create rewardDistribution mapping: mapping(address => uint256)
+- [x] Task 113: Implement _distributeReward internal function
+- [x] Task 114: Add getValidatorRewardShare function returning validator percentage
+- [x] Task 115: Create VALIDATOR_REWARD_PERCENT constant: 5 (5%)
+- [x] Task 116: Add setValidatorRewardPercent function updating validator share
+- [x] Task 117: Add getProtocolRewardRecipient function returning protocol address
+- [x] Task 118: Add setProtocolRewardRecipient function updating protocol address
+- [x] Task 119: Implement _validateRewardCalculation internal pure function
+- [x] Task 120: Add emergencyWithdrawRewards function for admin recovery
+- [x] Task 121: Create rewardPaused mapping: mapping(address => bool)
+- [x] Task 122: Add pauseRewardAccrual function halting reward accumulation
+- [x] Task 123: Add unpauseRewardAccrual function resuming accrual
+- [x] Task 124: Add getRewardHistory function returning node reward timeline
+- [x] Task 125: Implement _calculateTimeWeightedReward internal function
+- [x] Task 126: Add submitRewardClaim function with cryptographic proof
+- [x] Task 127: Implement _validateRewardClaim internal function
+- [x] Task 128: Add slashPartial function slashing percentage of stake
+- [x] Task 129: Add getSlashPercentage function returning current slash rate
+- [x] Task 130: Implement _applySlashingDistribution internal function
+- [x] Task 131: Add getProtocolFeePercent function returning platform fee
+- [x] Task 132: Add setProtocolFeePercent function updating platform fee
+- [x] Task 133: Create PROTOCOL_FEE_PERCENT constant: 25 (2.5%)
+- [x] Task 134: Add getEffectiveSlashAmount function accounting for all factors
+- [x] Task 135: Implement _validateNodeNotFrozen internal function
+- [x] Task 136: Add getLastSlashTime function returning most recent slash timestamp
+- [x] Task 137: Add getSlashCooldownRemaining function calculating cooldown
+- [x] Task 138: Create SLASH_COOLDOWN_PERIOD constant: 86400 (24 hours)
+- [x] Task 139: Add isSlashOnCooldown function checking cooldown status
+- [x] Task 140: Add _resetSlashCooldown internal function
+- [x] Task 141: Add getTotalSlashedAmount function summing all slashed amounts
+- [x] Task 142: Add getAverageSlashAmount function calculating mean slash
+- [x] Task 143: Implement _emitSlashMetrics for analytics tracking
+- [x] Task 144: Add getNodeSlashProbability function for risk scoring
+- [x] Task 145: Add setNodeSlashProbability function updating risk model
+- [x] Task 146: Implement _calculateRiskPremium internal pure function
+- [x] Task 147: Add getHistoricalSlashRate function returning historical data
+- [x] Task 148: Add getProjectedSlashRate function estimating future slashes
+- [x] Task 149: Implement _validateSlashAmount internal function
+- [x] Task 150: Add getMinimumStakeForNode function calculating required collateral
+- [x] Task 151: Add setMinimumStakeForNode function updating collateral requirement
+- [x] Task 152: Create BASE_MINIMUM_STAKE constant: 1000 (wei)
+- [x] Task 153: Add _requireMinimumStake modifier validating collateral
+- [x] Task 154: Add getNodeCapacity function returning max concurrent jobs
+- [x] Task 155: Add setNodeCapacity function updating job limit
+- [x] Task 156: Create DEFAULT_NODE_CAPACITY constant: 10 jobs
+- [x] Task 157: Add getNodeUtilization function returning capacity usage
+- [x] Task 158: Add _validateNodeCapacity internal function
+- [x] Task 159: Implement getActiveJobCount function counting current jobs
+- [x] Task 160: Add getMaxConcurrentJobs function returning node limit
+- [x] Task 161: Implement _canAcceptJob internal function checking capacity
+- [x] Task 162: Add setNodeOffline function marking node unavailable
+- [x] Task 163: Add setNodeOnline function marking node available
+- [x] Task 164: Add isNodeOnline function checking availability status
+- [x] Task 165: Implement _broadcastNodeStatusChange internal function
+- [x] Task 166: Add getNodeRegion function returning geographic region
+- [x] Task 167: Add setNodeRegion function updating node location
+- [x] Task 168: Create supportedRegions array for valid geographic zones
+- [x] Task 169: Add _validateRegion internal function checking region validity
+- [x] Task 170: Add getNodeUptimeWindow function returning rolling uptime
+- [x] Task 171: Add calculateUptimeWindow function averaging uptime period
+- [x] Task 172: Create UPTIME_WINDOW_SECONDS constant: 2592000 (30 days)
+- [x] Task 173: Add getRecentSlashes function returning last N slashes
+- [x] Task 174: Create RECENT_SLASH_LIMIT constant: 100 events
+- [x] Task 175: Add getSlashReason function returning reason string
+- [x] Task 176: Add _slashReasonToString internal pure function
+- [x] Task 177: Add getSlashEventsByReason function filtering by cause
+- [x] Task 178: Create SLASH_REASON_COUNT constant: 4 (number of slash reasons)
+- [x] Task 179: Add getTotalSlashAmountByNode function summing node slashes
+- [x] Task 180: Add getAverageSlashAmountByNode function calculating mean
+- [x] Task 181: Implement getSlashTrend function analyzing slash frequency
+- [x] Task 182: Add getNodeReliabilityScore function returning reliability %
+- [x] Task 183: Implement _calculateReliabilityScore internal pure function
+- [x] Task 184: Add getReliabilityWeight function for weighted reputation
+- [x] Task 185: Add setReliabilityWeight function updating weight
+- [x] Task 186: Create DEFAULT_RELIABILITY_WEIGHT constant: 20
+- [x] Task 187: Implement _weightedReputationCalculation internal function
+- [x] Task 188: Add getCompositeScore function combining all metrics
+- [x] Task 189: Add getNormalizedScore function for 0-1000 scale
+- [x] Task 190: Add _normalizeScore internal function scaling to range
+- [x] Task 191: Add getTrustScore function returning trust percentage
+- [x] Task 192: Add getTrustLevel function returning trust tier
+- [x] Task 193: Implement _calculateTrustScore internal pure function
+- [x] Task 194: Create TRUST_LEVELS array: ['New', 'Bronze', 'Silver', 'Gold', 'Platinum']
+- [x] Task 195: Add getNodeAge function returning days since registration
+- [x] Task 196: Add getNodeCreationTime function returning registration timestamp
+- [x] Task 197: Implement _calculateNodeAge internal function
+- [x] Task 198: Add getGracePeriodRemaining function for new node leniency
+- [x] Task 199: Create GRACE_PERIOD_SECONDS constant: 604800 (7 days)
+- [x] Task 200: Add isInGracePeriod function checking leniency status
+- [x] Task 201: Add _requireNotInGracePeriod modifier for strict enforcement
+- [x] Task 202: Add getNodePerformanceScore function returning performance %
+- [x] Task 203: Add getHistoricalPerformance function returning past performance
+- [x] Task 204: Implement _calculatePerformanceTrend internal function
+- [x] Task 205: Add getPerformanceTrend function returning trend direction
+- [x] Task 206: Create PERFORMANCE_WINDOW constant: 30 days
+- [x] Task 207: Add getNodeHealthScore function returning overall health
+- [x] Task 208: Implement _calculateHealthScore internal function
+- [x] Task 209: Add getHealthStatus function returning status string
+- [x] Task 210: Create HEALTH_THRESHOLDS array: [0.5, 0.7, 0.85, 0.95] for status tiers
+- [x] Task 211: Add getRecommendedAction function suggesting management action
+- [x] Task 212: Implement _determineRecommendedAction internal function
+- [x] Task 213: Add executeRecommendedAction function triggering automated response
+- [x] Task 214: Add getAutoActionEnabled function checking automation status
+- [x] Task 215: Add setAutoActionEnabled function toggling automation
+- [x] Task 216: Create autoActions mapping: mapping(address => bool)
+- [x] Task 217: Add _performAutoAction internal function executing automation
+- [x] Task 218: Add getNodeValue function returning total staked value
+- [x] Task 219: Add getNodeROI function returning return on stake
+- [x] Task 220: Implement _calculateNodeROI internal function
+- [x] Task 221: Add getProjectedAnnualReward function estimating yearly earnings
+- [x] Task 222: Add getActualAnnualReward function calculating historical yield
+- [x] Task 223: Implement _calculateAPY internal pure function
+- [x] Task 224: Add getRewardEfficiency function returning reward per staked
+- [x] Task 225: Add getSlashedEfficiency function returning slash per staked
+- [x] Task 226: Implement _calculateSlashedEfficiency internal function
+- [x] Task 227: Add getNetROI function subtracting slashes from rewards
+- [x] Task 228: Implement _calculateNetROI internal function
+- [x] Task 229: Add getProviderHealth function returning provider wellness
+- [x] Task 230: Add getProviderRisk function returning risk assessment
+- [x] Task 231: Implement _calculateProviderRisk internal function
+- [x] Task 232: Add getProviderTier function returning tier classification
+- [x] Task 233: Add _validateProviderDataIntegrity internal function
+- [x] Task 234: Add submitProviderReport function with attestation
+- [x] Task 235: Implement _validateProviderReport internal function
+- [x] Task 236: Add getProviderReportCount function counting submissions
+- [x] Task 237: Add getLatestProviderReport function returning recent report
+- [x] Task 238: Add _calculateReportConsistency internal function
+- [x] Task 239: Add getReportCredibility function returning trust score
+- [x] Task 240: Implement _assessReportCredibility internal pure function
+- [x] Task 241: Add getNodeSlashRecord function returning complete history
+- [x] Task 242: Add getNodeScoreHistory function returning score timeline
+- [x] Task 243: Add _emitReputationSnapshot for periodic snapshots
+- [x] Task 244: Create snapshotInterval constant for snapshot frequency
+- [x] Task 245: Add _takeSnapshot internal function recording current state
+- [x] Task 246: Add getHistoricalSnapshot function for specific timestamp
+- [x] Task 247: Implement _interpolateSnapshot internal function
+- [x] Task 248: Add getScoreAtTime function returning historical score
+- [x] Task 249: Add getAverageScoreOverPeriod function averaging window
+- [x] Task 250: Implement _calculateMovingAverage internal function
+- [x] Task 251: Add getScoreVolatility function measuring score variance
+- [x] Task 252: Implement _calculateScoreVariance internal function
+- [x] Task 253: Add getRiskAdjustedScore function factoring volatility
+- [x] Task 254: Implement _calculateRiskAdjustedScore internal function
+- [x] Task 255: Add getConfidenceInterval function returning score bounds
+- [x] Task 256: Implement _calculateConfidenceBounds internal function
+- [x] Task 257: Add getUpperConfidence function returning upper bound
+- [x] Task 258: Add getLowerConfidence function returning lower bound
+- [x] Task 259: Add getConfidenceLevel function returning confidence %
+- [x] Task 260: Create DEFAULT_CONFIDENCE_LEVEL constant: 95%
+- [x] Task 261: Add setConfidenceLevel function updating confidence target
+- [x] Task 262: Add getAdjustedReputation function accounting for confidence
+- [x] Task 263: Implement _adjustForConfidence internal function
+- [x] Task 264: Add getFinalReputation function with all adjustments applied
+- [x] Task 265: Implement _calculateFinalReputation internal function
+- [x] Task 266: Add getMinimumConfidenceForUpdate function setting floor
+- [x] Task 267: Add setMinimumConfidence function updating threshold
+- [x] Task 268: Create MIN_CONFIDENCE_TO_UPDATE constant: 80%
+- [x] Task 269: Add _requireSufficientConfidence modifier
+- [x] Task 270: Add getReputationUpdateNeeded function determining if update worthwhile
+- [x] Task 271: Implement _shouldUpdateReputation internal function
+- [x] Task 272: Add _performReputationUpdate internal function
+- [x] Task 273: Add getTimeSinceLastUpdate function returning update age
+- [x] Task 274: Add _requireMinimumUpdateInterval modifier
+- [x] Task 275: Create MIN_UPDATE_INTERVAL constant: 3600 (1 hour)
+- [x] Task 276: Add setMinimumUpdateInterval function updating frequency
+- [x] Task 277: Add getUpdatePriority function ranking nodes for update
+- [x] Task 278: Implement _calculateUpdatePriority internal function
+- [x] Task 279: Add prioritizeUpdates function ordering update queue
+- [x] Task 280: Add _sortByPriority internal function
+- [x] Task 281: Add _batchUpdateReputation internal function for gas efficiency
+- [x] Task 282: Add _getUpdateBatch function returning next batch of nodes
+- [x] Task 283: Create BATCH_SIZE constant: 50 nodes per batch
+- [x] Task 284: Add setBatchSize function updating batch size
+- [x] Task 285: Add getBatchedUpdateProgress function returning completion %
+- [x] Task 286: Add _completeBatchedUpdate internal function finalizing batch
+- [x] Task 287: Add getNodesRequiringUpdate function returning stale nodes
+- [x] Task 288: Add _identifyStaleNodes internal function
+- [x] Task 289: Add _triggerReputationRefresh external function
+- [x] Task 290: Add getReputationFreshness function returning data age
+- [x] Task 291: Implement _calculateDataFreshness internal function
+- [x] Task 292: Add getStalenessPenalty function reducing score for old data
+- [x] Task 293: Implement _applyStalenessPenalty internal function
+- [x] Task 294: Add getEffectiveReputation function with staleness applied
+- [x] Task 295: Implement _calculateEffectiveReputation internal function
+- [x] Task 296: Add getFinalScore function with all adjustments finalized
+- [x] Task 297: Add getScoreChange function returning delta since last
+- [x] Task 298: Add getLastUpdateTime function returning timestamp
+- [x] Task 299: Add getScoreMomentum function returning trend velocity
+- [x] Task 300: Implement _calculateMomentum internal function
+- [x] Task 301: Add getMomentumDirection function returning trend sign
+- [x] Task 302: Add getMomentumMagnitude function returning trend strength
+- [x] Task 303: Implement _classifyMomentum internal function
+- [x] Task 304: Add getScoreProjection function projecting future score
+- [x] Task 305: Implement _projectScore internal function
+- [x] Task 306: Add getProjectionConfidence function returning certainty
+- [x] Task 307: Implement _calculateProjectionConfidence internal function
+- [x] Task 308: Add getRiskOfDecline function assessing downgrade risk
+- [x] Task 309: Implement _assessDeclineRisk internal function
+- [x] Task 310: Add getRecoveryProbability function estimating improvement
+- [x] Task 311: Implement _calculateRecoveryProbability internal function
+- [x] Task 312: Add getNodeHealthProjection function forecasting health
+- [x] Task 313: Implement _projectNodeHealth internal function
+- [x] Task 314: Add _shouldTriggerIntervention function checking thresholds
+- [x] Task 315: Implement _determineInterventionType internal function
+- [x] Task 316: Add getRecommendedIntervention function returning action
+- [x] Task 317: Implement _calculateRecommendedIntervention internal function
+- [x] Task 318: Add getInterventionUrgency function returning urgency level
+- [x] Task 319: Implement _assessInterventionUrgency internal function
+- [x] Task 320: Add _executeIntervention internal function
+- [x] Task 321: Add getInterventionHistory function returning past actions
+- [x] Task 322: Add _recordIntervention internal function
+- [x] Task 323: Add getInterventionEffectiveness function measuring outcome
+- [x] Task 324: Implement _measureInterventionOutcome internal function
+- [x] Task 325: Add _adjustInterventionStrategy internal function
+- [x] Task 326: Add getAdaptiveThreshold function for dynamic thresholds
+- [x] Task 327: Implement _calculateAdaptiveThreshold internal function
+- [x] Task 328: Add setAdaptiveEnabled function toggling adaptation
+- [x] Task 329: Create adaptiveEnabled mapping: mapping(bytes32 => bool)
+- [x] Task 330: Add getNetworkAverageReputation function for comparison
+- [x] Task 331: Implement _calculateNetworkAverage internal function
+- [x] Task 332: Add getNodeVsNetwork function comparing to average
+- [x] Task 333: Implement _calculateNodeVsNetwork internal function
+- [x] Task 334: Add getPercentileRank function returning percentile
+- [x] Task 335: Implement _calculatePercentileRank internal function
+- [x] Task 336: Add getNodeClassification function returning classification
+- [x] Task 337: Create CLASSIFICATIONS array: ['D', 'C', 'B', 'A', 'A+']
+- [x] Task 338: Add _classifyNode internal function
+- [x] Task 339: Add getClassificationThreshold function returning boundary
+- [x] Task 340: Add setClassificationThreshold function updating boundary
+- [x] Task 341: Create classificationThresholds mapping: mapping(string => uint256)
+- [x] Task 342: Add _initializeDefaultThresholds internal function
+- [x] Task 343: Add getTargetScore function returning goal score
+- [x] Task 344: Add setTargetScore function updating goal
+- [x] Task 345: Add getScoreGap function calculating distance to target
+- [x] Task 346: Implement _calculateScoreGap internal function
+- [x] Task 347: Add getImprovementRateNeeded function calculating required gain
+- [x] Task 348: Implement _calculateRequiredRate internal function
+- [x] Task 349: Add getTimeToTarget function estimating completion time
+- [x] Task 350: Implement _calculateTimeToTarget internal function
+- [x] Task 351: Add getAchievableImprovement function capping potential
+- [x] Task 352: Implement _calculateAchievableImprovement internal function
+- [x] Task 353: Add getBurnInPeriod function returning required observation
+- [x] Task 354: Create BURN_IN_PERIOD constant: 604800 (7 days)
+- [x] Task 355: Add getTrustWeight function for weighted trust calculation
+- [x] Task 356: Add setTrustWeight function updating weight
+- [x] Task 357: Create DEFAULT_TRUST_WEIGHT constant: 15
+- [x] Task 358: Add getStakedWeight function for collateral-weighted score
+- [x] Task 359: Add setStakedWeight function updating weight
+- [x] Task 360: Create DEFAULT_STAKED_WEIGHT constant: 25
+- [x] Task 361: Add getPerformanceWeight function for performance-weighted score
+- [x] Task 362: Add setPerformanceWeight function updating weight
+- [x] Task 363: Create DEFAULT_PERFORMANCE_WEIGHT constant: 35
+- [x] Task 364: Add getUptimeWeight function for uptime-weighted score
+- [x] Task 365: Add setUptimeWeight function updating weight
+- [x] Task 366: Create DEFAULT_UPTIME_WEIGHT constant: 15
+- [x] Task 367: Add getReliabilityWeight function for reliability-weighted score
+- [x] Task 368: Add setReliabilityWeight function updating weight
+- [x] Task 369: Create DEFAULT_RELIABILITY_WEIGHT constant: 10
+- [x] Task 370: Add _validateWeightSum internal function ensuring 100%
+- [x] Task 371: Add getWeightedReputation function combining all weights
+- [x] Task 372: Implement _calculateWeightedReputation internal function
+- [x] Task 373: Add getCompositeWeightTotal function returning sum
+- [x] Task 374: Add _rebalanceWeights internal function normalizing
+- [x] Task 375: Add rebalanceWeights function triggering normalization
+- [x] Task 376: Add getWeightDistribution function returning allocation
+- [x] Task 377: Implement _calculateWeightDistribution internal function
+- [x] Task 378: Add getRecommendedWeights function suggesting optimal
+- [x] Task 379: Implement _optimizeWeights internal function
+- [x] Task 380: Add setRecommendedWeights function applying suggestion
+- [x] Task 381: Create useRecommendedWeights mapping: mapping(address => bool)
+- [x] Task 382: Add _autoRebalanceWeights internal function
+- [x] Task 383: Add getAutoRebalanceEnabled function checking status
+- [x] Task 384: Add setAutoRebalanceEnabled function toggling feature
+- [x] Task 385: Create autoRebalanceEnabled mapping: mapping(address => bool)
+- [x] Task 386: Add getRebalanceThreshold function returning trigger
+- [x] Task 387: Add setRebalanceThreshold function updating trigger
+- [x] Task 388: Create DEFAULT_REBALANCE_THRESHOLD constant: 10% drift
+- [x] Task 389: Add _checkRebalanceNeeded internal function
+- [x] Task 390: Add getRebalanceProgress function returning rebalance %
+- [x] Task 391: Implement _calculateRebalanceProgress internal function
+- [x] Task 392: Add _executeRebalance internal function
+- [x] Task 393: Add getRebalanceWindow function returning time limit
+- [x] Task 394: Add setRebalanceWindow function updating window
+- [x] Task 395: Create DEFAULT_REBALANCE_WINDOW constant: 86400 (24 hours)
+- [x] Task 396: Add getRebalanceDeadline function returning absolute time
+- [x] Task 397: Add _isWithinRebalanceWindow internal function
+- [x] Task 398: Add getMissedRebalanceCount function counting violations
+- [x] Task 399: Add getRebalanceCompliance function returning compliance %
+- [x] Task 400: Implement _calculateRebalanceCompliance internal function
+- [x] Task 401: Add getRebalanceScore function for rebalking node
+- [x] Task 402: Implement _calculateRebalanceScore internal function
+- [x] Task 403: Add getRebalancePenalty function for missed rebalances
+- [x] Task 404: Implement _calculateRebalancePenalty internal function
+- [x] Task 405: Add applyRebalancePenalty function reducing score
+- [x] Task 406: Add _applyPenaltyToReputation internal function
+- [x] Task 407: Add getPenaltyGracePeriod function for leniency
+- [x] Task 408: Add setPenaltyGracePeriod function updating leniency
+- [x] Task 409: Create DEFAULT_PENALTY_GRACE constant: 2592000 (30 days)
+- [x] Task 410: Add isPenaltyGraceEligible function checking eligibility
+- [x] Task 411: Add _requirePenaltyGraceEligibility modifier
+- [x] Task 412: Add getPenaltyHistory function returning past penalties
+- [x] Task 413: Add getCumulativePenalty function summing penalties
+- [x] Task 414: Implement _calculateCumulativePenalty internal function
+- [x] Task 415: Add getPenaltyCount function counting penalty instances
+- [x] Task 416: Add getPenaltyFrequency function returning penalty rate
+- [x] Task 417: Implement _calculatePenaltyFrequency internal function
+- [x] Task 418: Add getPenaltyTrend function analyzing frequency trend
+- [x] Task 419: Implement _calculatePenaltyTrend internal function
+- [x] Task 420: Add getPenaltyPrediction function forecasting future
+- [x] Task 421: Implement _predictPenalties internal function
+- [x] Task 422: Add getPenaltyRisk function assessing penalty risk
+- [x] Task 423: Implement _assessPenaltyRisk internal function
+- [x] Task 424: Add getPenaltySeverity function returning average severity
+- [x] Task 425: Implement _calculateAverageSeverity internal function
+- [x] Task 426: Add getSeverePenaltyCount function counting major penalties
+- [x] Task 427: Add getMinorPenaltyCount function counting minor penalties
+- [x] Task 428: Add _classifyPenaltySeverity internal function
+- [x] Task 429: Create SEVERITY_THRESHOLD constant: 500 (score drop)
+- [x] Task 430: Add getPenaltyRecoveryRate function measuring improvement
+- [x] Task 431: Implement _calculateRecoveryRate internal function
+- [x] Task 432: Add getPenaltyRecoveryTime function estimating fix duration
+- [x] Task 433: Implement _estimateRecoveryTime internal function
+- [x] Task 434: Add getPenaltyImpactScore function quantifying impact
+- [x] Task 435: Implement _calculatePenaltyImpact internal function
+- [x] Task 436: Add getNodeRiskProfile function returning risk category
+- [x] Task 437: Create RISK_PROFILES array: ['Low', 'Medium', 'High', 'Critical']
+- [x] Task 438: Add _classifyRiskProfile internal function
+- [x] Task 439: Add getNodeRecommendation function returning guidance
+- [x] Task 440: Implement _generateRecommendation internal function
+- [x] Task 441: Add getActionableInsights function returning todo list
+- [x] Task 442: Implement _generateActionableInsights internal function
+- [x] Task 443: Add getNodeScoreProjection function projecting future
+- [x] Task 444: Implement _projectNodeScore internal function
+- [x] Task 445: Add getInterventionSuccessRate function measuring past success
+- [x] Task 446: Implement _measureInterventionSuccess internal function
+- [x] Task 447: Add _optimizeInterventionStrategy internal function
+- [x] Task 448: Add getOptimalIntervention function returning best action
+- [x] Task 449: Implement _determineOptimalIntervention internal function
+- [x] Task 450: Add applyOptimalIntervention function executing best
+- [x] Task 451: Add _executeOptimalIntervention internal function
+- [x] Task 201: Initialize Go module with go mod init tentrist/backend
+- [x] Task 202: Add github.com/jackc/pgx/v5/pgxpool import for PostgreSQL
+- [x] Task 203: Add github.com/ethereum/go-ethereum imports for contract interaction
+- [x] Task 204: Add golang.org/x/sync/errgroup for concurrent operations
+- [x] Task 205: Create internal/api/routes.go registering all HTTP routes
+- [x] Task 206: Create internal/api/middleware/auth.go with JWT validation
+- [x] Task 207: Create internal/api/middleware/cors.go with origin allowlist
+- [x] Task 208: Create internal/api/middleware/ratelimit.go with token bucket
+- [x] Task 209: Create internal/api/middleware/logger.go with structured logging
+- [x] Task 210: Create internal/api/handlers/job.go with CRUD operations
+- [x] Task 211: Create internal/api/handlers/node.go with registration
+- [x] Task 212: Create internal/api/handlers/wallet.go with balance queries
+- [x] Task 213: Create internal/api/handlers/escrow.go with stake operations
+- [x] Task 214: Create internal/api/handlers/heartbeat.go with telemetry
+- [x] Task 215: Create internal/api/handlers/governance.go with proposals
+- [x] Task 216: Create internal/api/handlers/admin.go with admin operations
+- [x] Task 217: Create internal/types/job.go defining Job type
+- [x] Task 218: Create internal/types/node.go defining Node type
+- [x] Task 219: Create internal/types/user.go defining User type
+- [x] Task 220: Create internal/types/sla.go defining SLA type
+- [x] Task 221: Create internal/types/slash.go defining SlashEvent type
+- [x] Task 222: Create internal/types/escrow.go defining EscrowPosition type
+- [x] Task 223: Create internal/db/job_repository.go implementing job CRUD
+- [x] Task 224: Create internal/db/node_repository.go implementing node CRUD
+- [x] Task 225: Create internal/db/user_repository.go implementing user CRUD
+- [x] Task 226: Create internal/db/escrow_repository.go implementing escrow ops
+- [x] Task 227: Create internal/db/heartbeat_repository.go implementing heartbeat
+- [x] Task 228: Create internal/contract/escrow.go implementing Escrow bindings
+- [x] Task 229: Create internal/contract/sla.go implementing SLA bindings
+- [x] Task 230: Create internal/contract/slash.go implementing Slash bindings
+- [x] Task 231: Create internal/contract/reputation.go implementing Reputation bindings
+- [x] Task 232: Create internal/orchestrator/job_splitter.go splitting workloads
+- [x] Task 233: Create internal/orchestrator/node_selector.go selecting nodes
+- [x] Task 234: Create internal/orchestrator/checkpoint_manager.go managing checkpoints
+- [x] Task 235: Create internal/monitor/heartbeat_monitor.go monitoring node health
+- [x] Task 236: Create internal/monitor/sla_enforcer.go enforcing SLA terms
+- [x] Task 237: Create internal/monitor/slash_detector.go detecting violations
+- [x] Task 238: Create cmd/server/main.go initializing all components
+- [x] Task 239: Add context.Context propagation through all handler layers
+- [x] Task 240: Implement graceful shutdown with os signals handling
+- [x] Task 241: Add structured logging with zerolog
+- [x] Task 242: Add Prometheus metrics endpoint /metrics
+- [x] Task 243: Add pprof profiling endpoint /debug/pprof
+- [x] Task 244: Create internal/config/config.go loading from env vars
+- [x] Task 245: Add DATABASE_URL environment variable parsing
+- [x] Task 246: Add CONTRACT_ADDRESSES environment variable parsing
+- [x] Task 247: Add ETHEREUM_RPC_URL environment variable parsing
+- [x] Task 248: Add JWT_SECRET environment variable parsing
+- [x] Task 249: Add PORT environment variable with default :8080
+- [x] Task 250: Create internal/db/migrate.go running migrations on startup
+- [x] Task 251: Add database connection pool configuration with pgxpool.Config
+- [x] Task 252: Set MaxConns in pool configuration for concurrent requests
+- [x] Task 253: Set MinConns in pool configuration for warm connections
+- [x] Task 254: Set MaxConnLifetime in pool configuration for recycling
+- [x] Task 255: Set MaxConnIdleTime in pool configuration for cleanup
+- [x] Task 256: Add health check endpoint GET /health
+- [x] Task 257: Add ready check endpoint GET /ready verifying DB connection
+- [x] Task 258: Implement POST /api/v1/jobs/serverless endpoint
+- [x] Task 259: Parse JobInput struct from request body JSON
+- [x] Task 260: Validate required fields: nodeType, duration, slaTier
+- [x] Task 261: Generate UUID for new job with github.com/google/uuid
+- [x] Task 262: Insert job to PostgreSQL with pool.Exec in tx
+- [x] Task 263: Return job ID and estimated start time in response
+- [x] Task 264: Implement GET /api/v1/jobs/:id endpoint
+- [x] Task 265: Select job from PostgreSQL by ID with pool.QueryRow
+- [x] Task 266: Return 404 if job not found
+- [x] Task 267: Implement GET /api/v1/jobs endpoint with pagination
+- [x] Task 268: Parse limit and offset from query params
+- [x] Task 269: Select jobs from PostgreSQL with ORDER BY created_at DESC
+- [x] Task 270: Implement DELETE /api/v1/jobs/:id endpoint
+- [x] Task 271: Soft delete job with status=cancelled in PostgreSQL
+- [x] Task 272: Implement PATCH /api/v1/jobs/:id/heartbeat endpoint
+- [x] Task 273: Update job last_heartbeat in PostgreSQL
+- [x] Task 274: Implement PATCH /api/v1/jobs/:id/complete endpoint
+- [x] Task 275: Update job status=completed, completed_at in PostgreSQL
+- [x] Task 276: Implement PATCH /api/v1/jobs/:id/fail endpoint
+- [x] Task 277: Update job status=failed, error_message in PostgreSQL
+- [x] Task 278: Call contractClient.CompleteJob on job success
+- [x] Task 279: Implement GET /api/v1/jobs/:id/logs endpoint
+- [x] Task 280: Stream job logs from job_logs table via SSE
+- [x] Task 281: Add job ID index on node_assignments for fast lookup
+- [x] Task 282: Add status index on jobs for filtered queries
+- [x] Task 283: Add created_at index on jobs for ordering
+- [x] Task 284: Implement POST /api/v1/nodes/register endpoint
+- [x] Task 285: Parse NodeRegistration struct from request
+- [x] Task 286: Validate ethereum address format with hex decode
+- [x] Task 287: Call contractClient.Stake() sending stake transaction
+- [x] Task 288: Wait for transaction confirmation with 30s timeout
+- [x] Task 289: Insert node to PostgreSQL with pool.Exec
+- [x] Task 290: Return node ID and registration status
+- [x] Task 291: Implement GET /api/v1/nodes endpoint
+- [x] Task 292: Select nodes from PostgreSQL with pool.Query
+- [x] Task 293: Return paginated list with total count header
+- [x] Task 294: Implement GET /api/v1/nodes/:address endpoint
+- [x] Task 295: Select node from PostgreSQL by ethereum address
+- [x] Task 296: Return 404 if node not found
+- [x] Task 297: Implement POST /api/v1/nodes/heartbeat endpoint
+- [x] Task 298: Parse HeartbeatInput from request body
+- [x] Task 299: Insert heartbeat record to node_heartbeats table
+- [x] Task 300: Update node uptime_seconds and vram_used_mb in nodes table
+- [x] Task 301: Check heartbeat interval against minimum (30s)
+- [x] Task 302: Flag node as stale if heartbeat gap > 60s
+- [x] Task 303: Implement GET /api/v1/nodes/:address/stats endpoint
+- [x] Task 304: Calculate uptime from node_heartbeats timestamps
+- [x] Task 305: Calculate avg_vram from recent heartbeats
+- [x] Task 306: Return node statistics object
+- [x] Task 307: Implement POST /api/v1/nodes/unregister endpoint
+- [x] Task 308: Call contractClient.Withdraw() initiating stake withdrawal
+- [x] Task 309: Update node status=unregistered in PostgreSQL
+- [x] Task 310: Implement GET /api/v1/nodes/eligible endpoint
+- [x] Task 311: Select nodes where status=online AND stake_amount > minimum
+- [x] Task 312: Order by reputation score DESC
+- [x] Task 313: Return list of eligible nodes
+- [x] Task 314: Implement GET /api/v1/nodes/regions endpoint
+- [x] Task 315: Return distinct regions from nodes table
+- [x] Task 316: Implement PATCH /api/v1/nodes/:address/status endpoint
+- [x] Task 317: Update node status in PostgreSQL
+- [x] Task 318: Broadcast status change via contract event
+- [x] Task 319: Add ethereum_address index on nodes table
+- [x] Task 320: Add status index on nodes for filtering
+- [x] Task 321: Add stake_amount index on nodes for ordering
+- [x] Task 322: Implement GET /api/v1/escrow/balance/:address endpoint
+- [x] Task 323: Call contractClient.GetStake(address) ethcall
+- [x] Task 324: Return formatted balance with decimals
+- [x] Task 325: Implement POST /api/v1/escrow/stake endpoint
+- [x] Task 326: Parse StakeInput from request body
+- [x] Task 327: Call contractClient.Stake() with amount and tx opts
+- [x] Task 328: Wait for confirmation and get tx receipt
+- [x] Task 329: Log stake event to transactions table
+- [x] Task 330: Implement POST /api/v1/escrow/unstake endpoint
+- [x] Task 331: Parse UnstakeInput from request body
+- [x] Task 332: Call contractClient.RequestWithdraw()
+- [x] Task 333: Log unstake event to transactions table
+- [x] Task 334: Implement GET /api/v1/escrow/positions/:address endpoint
+- [x] Task 335: Select escrow_positions from PostgreSQL by address
+- [x] Task 336: Return active stake positions
+- [x] Task 337: Implement GET /api/v1/escrow/total-staked endpoint
+- [x] Task 338: Call contractClient.GetTotalStaked() ethcall
+- [x] Task 339: Return total staked amount
+- [x] Task 340: Implement GET /api/v1/escrow/staker-count endpoint
+- [x] Task 341: Call contractClient.GetStakerCount() ethcall
+- [x] Task 342: Return total staker count
+- [x] Task 343: Implement POST /api/v1/escrow/claim endpoint
+- [x] Task 344: Call contractClient.Claim() for ready withdrawals
+- [x] Task 345: Log claim event to transactions table
+- [x] Task 346: Add address index on escrow_positions table
+- [x] Task 347: Add status index on escrow_positions table
+- [x] Task 348: Add timestamp index on transactions table
+- [x] Task 349: Implement GET /api/v1/governance/proposals endpoint
+- [x] Task 350: Select proposals from PostgreSQL ordered by created_at
+- [x] Task 351: Implement GET /api/v1/governance/proposals/:id endpoint
+- [x] Task 352: Select proposal by ID with votes relationship
+- [x] Task 353: Return proposal with current vote counts
+- [x] Task 354: Implement POST /api/v1/governance/proposals endpoint
+- [x] Task 355: Parse CreateProposalInput from request
+- [x] Task 356: Validate proposal type and parameters
+- [x] Task 357: Insert proposal to PostgreSQL
+- [x] Task 358: Emit on-chain proposal created event
+- [x] Task 359: Implement POST /api/v1/governance/vote endpoint
+- [x] Task 360: Parse VoteInput from request body
+- [x] Task 361: Validate voter eligibility via contract
+- [x] Task 362: Insert vote to votes table
+- [x] Task 363: Update proposal vote counts in PostgreSQL
+- [x] Task 364: Implement GET /api/v1/governance/delegates/:address endpoint
+- [x] Task 365: Get delegate balance from contract
+- [x] Task 366: Return delegation info
+- [x] Task 367: Implement POST /api/v1/governance/delegate endpoint
+- [x] Task 368: Call contractClient.Delegate()
+- [x] Task 369: Update delegation in PostgreSQL
+- [x] Task 370: Implement GET /api/v1/governance/delegations/:address endpoint
+- [x] Task 371: Select delegations where from_address
+- [x] Task 372: Return list of delegations
+- [x] Task 373: Implement GET /api/v1/governance/votes/:address endpoint
+- [x] Task 374: Select votes where voter_address
+- [x] Task 375: Return voting history
+- [x] Task 376: Implement GET /api/v1/governance/tally/:id endpoint
+- [x] Task 377: Calculate current vote tally for proposal
+- [x] Task 378: Return for_votes, against_votes, abstain_votes
+- [x] Task 379: Add status index on proposals table
+- [x] Task 380: Add created_at index on votes table
+- [x] Task 381: Add proposal_id index on votes table
+- [x] Task 382: Add errgroup with context for parallel job processing
+- [x] Task 383: Implement job timeout handling with context.WithTimeout
+- [x] Task 384: Add retry logic with exponential backoff for eth calls
+- [x] Task 385: Set max retry attempts to 3 for eth transactions
+- [x] Task 386: Set base backoff to 1 second for retries
+- [x] Task 387: Implement mutex locks for shared state maps in handlers
+- [x] Task 388: Use sync.RWMutex for concurrent read access
+- [x] Task 389: Add transaction support with pgx.Begin for multi-step ops
+- [x] Task 390: Implement rollback on any error in transaction block
+- [x] Task 391: Add idempotency key handling for job submissions
+- [x] Task 392: Check idempotency key in Redis before processing
+- [x] Task 393: Store idempotency key with 24h TTL
+- [x] Task 394: Add request timeout middleware with 30s default
+- [x] Task 395: Propagate context deadline to PostgreSQL queries
+- [x] Task 396: Add circuit breaker for external contract calls
+- [x] Task 397: Set circuit breaker threshold to 5 failures
+- [x] Task 398: Set circuit breaker timeout to 60 seconds
+- [x] Task 399: Implement fallback response when circuit open
+- [x] Task 400: Add database query timeout of 10 seconds
+- [x] Task 401: Initialize telemetry daemon with main.go entry point
+- [x] Task 402: Import github.com/ethereum/go-ethereum for RPC
+- [x] Task 403: Import github.com/NVIDIA/nvidia-container-toolkit for GPU metrics
+- [x] Task 404: Add nvmlInitialize for NVIDIA driver interaction
+- [x] Task 405: Add nvmlDeviceGetCount for GPU device enumeration
+- [x] Task 406: Add nvmlDeviceGetMemoryInfo for VRAM queries
+- [x] Task 407: Add nvmlDeviceGetUtilizationRates for GPU utilization
+- [x] Task 408: Add nvmlDeviceGetTemperature for thermal monitoring
+- [x] Task 409: Add nvmlDeviceGetPowerUsage for power draw monitoring
+- [x] Task 410: Create internal/collector/gpu_collector.go
+- [x] Task 411: Create internal/collector/cpu_collector.go
+- [x] Task 412: Create internal/collector/network_collector.go
+- [x] Task 413: Create internal/collector/disk_collector.go
+- [x] Task 414: Create internal/detector/failure_detector.go
+- [x] Task 415: Create internal/detector/anomaly_detector.go
+- [x] Task 416: Create internal/reporter/prometheus_reporter.go
+- [x] Task 417: Create internal/reporter/influxdb_reporter.go
+- [x] Task 418: Create internal/reporter/contract_reporter.go
+- [x] Task 419: Add CollectMetrics function with 30s interval
+- [x] Task 420: Query VRAM used and total from NVML
+- [x] Task 421: Query CPU usage with golang.org/x/sys/unix syscalls
+- [x] Task 422: Query network I/O counters from /proc/net/dev
+- [x] Task 423: Query disk I/O from /proc/diskstats
+- [x] Task 424: Aggregate metrics into NodeMetrics struct
+- [x] Task 425: Create internal/metrics/heartbeat.go sending 30s pulse
+- [x] Task 426: Add ping latency measurement with ICMP echo
+- [x] Task 427: Add packet loss calculation over sliding window
+- [x] Task 428: Add jitter measurement with round-trip deltas
+- [x] Task 429: Add packet corruption detection with checksum
+- [x] Task 430: Create internal/monitor/vram_monitor.go tracking VRAM
+- [x] Task 431: Set VRAM alert threshold at 95% utilization
+- [x] Task 432: Set VRAM critical threshold at 99% utilization
+- [x] Task 433: Create internal/monitor/latency_monitor.go tracking delays
+- [x] Task 434: Set latency alert threshold at 100ms
+- [x] Task 435: Set latency critical threshold at 500ms
+- [x] Task 436: Create internal/monitor/uptime_monitor.go tracking availability
+- [x] Task 437: Calculate uptime percentage over 24h window
+- [x] Task 438: Detect node offline when heartbeat gap > 60s
+- [x] Task 439: Detect node stale when heartbeat gap > 45s
+- [x] Task 440: Create internal/monitor/throughput_monitor.go tracking bandwidth
+- [x] Task 441: Measure bytes sent and received per interval
+- [x] Task 442: Calculate throughput in MB/s
+- [x] Task 443: Detect throughput degradation when < 10% of baseline
+- [x] Task 444: Create internal/monitor/error_rate_monitor.go
+- [x] Task 445: Track error count per sliding window
+- [x] Task 446: Set error rate alert at 1%
+- [x] Task 447: Set error rate critical at 5%
+- [x] Task 448: Create internal/alert/alerter.go with notification dispatch
+- [x] Task 449: Add alert severity levels: info, warning, critical
+- [x] Task 450: Add alert deduplication with 5 minute window
+- [x] Task 451: Add alert rate limiting with max 10 per minute
+- [x] Task 452: Create internal/alert/notifier/discord.go for Discord
+- [x] Task 453: Create internal/alert/notifier/slack.go for Slack
+- [x] Task 454: Create internal/alert/notifier/email.go for Email
+- [x] Task 455: Create internal/alert/notifier/webhook.go for Webhooks
+- [x] Task 456: Add alert templating with go templates
+- [x] Task 457: Add alert grouping by node and severity
+- [x] Task 458: Create internal/alert/router.go routing alerts to channels
+- [x] Task 459: Add alert filtering rules with regex matching
+- [x] Task 460: Add alert suppression during maintenance windows
+- [x] Task 461: Create internal/maintenance/window.go for maintenance
+- [x] Task 462: Add maintenance window scheduling with cron
+- [x] Task 463: Add automatic window closure after duration
+- [x] Task 464: Add emergency abort of maintenance window
+- [x] Task 465: Create internal/collector/container_collector.go for Docker
+- [x] Task 466: Query Docker daemon API for container metrics
+- [x] Task 467: Add container CPU and memory stats collection
+- [x] Task 468: Add container network I/O stats collection
+- [x] Task 469: Add container disk I/O stats collection
+- [x] Task 470: Query container status from Docker API
+- [x] Task 471: Detect container restart loops
+- [x] Task 472: Detect OOM kills from container events
+- [x] Task 473: Create internal/collector/process_collector.go
+- [x] Task 474: Query /proc/[pid]/stat for process metrics
+- [x] Task 475: Track Tentrist process specifically
+- [x] Task 476: Measure process CPU and memory usage
+- [x] Task 477: Track process file descriptor count
+- [x] Task 478: Track process thread count
+- [x] Task 479: Create failure signature detection with pattern matching
+- [x] Task 480: Detect heartbeat absence pattern
+- [x] Task 481: Detect VRAM spike pattern
+- [x] Task 482: Detect latency increase pattern
+- [x] Task 483: Detect throughput drop pattern
+- [x] Task 484: Detect error rate spike pattern
+- [x] Task 485: Detect CPU saturation pattern
+- [x] Task 486: Detect memory pressure pattern
+- [x] Task 487: Implement anomaly detection with statistical baseline
+- [x] Task 488: Calculate baseline from 24h moving average
+- [x] Task 489: Detect deviation beyond 3 standard deviations
+- [x] Task 490: Add anomaly confidence scoring
+- [x] Task 491: Add anomaly classification by type
+- [x] Task 492: Implement failure prediction with ML-style heuristics
+- [x] Task 493: Predict failure from early warning signs
+- [x] Task 494: Calculate failure probability score
+- [x] Task 495: Implement cascading failure detection
+- [x] Task 496: Detect dependent node failures
+- [x] Task 497: Detect network partition effects
+- [x] Task 498: Implement failure correlation analysis
+- [x] Task 499: Correlate metrics across nodes
+- [x] Task 500: Identify root cause from symptom chain
+- [x] Task 501: Create failure timeline reconstruction
+- [x] Task 502: Record all events with timestamps
+- [x] Task 503: Generate failure graph visualization data
+- [x] Task 504: Implement health scoring algorithm
+- [x] Task 505: Weight multiple failure indicators
+- [x] Task 506: Calculate composite health score 0-100
+- [x] Task 507: Implement health trend analysis
+- [x] Task 508: Detect improving vs degrading health
+- [x] Task 509: Implement node replacement recommendation
+- [x] Task 510: Calculate replacement urgency score
+- [x] Task 511: Generate replacement node criteria
+- [x] Task 512: Create internal/orchestrator/recovery.go
+- [x] Task 513: Implement automatic failover on node failure
+- [x] Task 514: Select best replacement node from pool
+- [x] Task 515: Initiate job migration to new node
+- [x] Task 516: Verify job state transfer integrity
+- [x] Task 517: Add recovery time measurement
+- [x] Task 518: Implement rollback on failed recovery
+- [x] Task 519: Create checkpoint before migration
+- [x] Task 520: Restore from checkpoint on failure
+- [x] Task 521: Add recovery notification to alerting
+- [x] Task 522: Add manual recovery trigger via API
+- [x] Task 523: Implement recovery approval workflow
+- [x] Task 524: Add approver role for critical recoveries
+- [x] Task 525: Create recovery plan with steps
+- [x] Task 526: Execute recovery plan automatically
+- [x] Task 527: Add recovery verification checks
+- [x] Task 528: Verify node health after recovery
+- [x] Task 529: Verify job completion after recovery
+- [x] Task 530: Add recovery metrics reporting
+- [x] Task 531: Report recovery success rate
+- [x] Task 532: Report recovery time metrics
+- [x] Task 533: Add recovery audit logging
+- [x] Task 534: Log all recovery actions with actor
+- [x] Task 535: Create internal/recovery/rollback.go
+- [x] Task 536: Implement state rollback capability
+- [x] Task 537: Store pre-failure state snapshot
+- [x] Task 538: Restore state from snapshot
+- [x] Task 539: Verify state integrity after restore
+- [x] Task 540: Add rollback safety checks
+- [x] Task 541: Confirm no newer state exists
+- [x] Task 542: Add rollback confirmation step
+- [x] Task 543: Create internal/recovery/migration.go
+- [x] Task 544: Implement job state serialization
+- [x] Task 545: Serialize job memory state to JSON
+- [x] Task 546: Transfer serialized state to new node
+- [x] Task 547: Deserialize state on destination
+- [x] Task 548: Verify deserialized state integrity
+- [x] Task 549: Add state transfer compression
+- [x] Task 550: Compress state data with zlib
+- [x] Task 551: Add state transfer encryption
+- [x] Task 552: Encrypt state with AES-256-GCM
+- [x] Task 553: Add state transfer authentication
+- [x] Task 554: HMAC state data for integrity
+- [x] Task 555: Implement incremental state sync
+- [x] Task 556: Track dirty memory pages
+- [x] Task 557: Sync only changed memory regions
+- [x] Task 558: Add state transfer progress reporting
+- [x] Task 559: Report bytes transferred
+- [x] Task 560: Report transfer rate
+- [x] Task 561: Report ETA for completion
+- [x] Task 562: Add state transfer retry logic
+- [x] Task 563: Retry failed transfers up to 3 times
+- [x] Task 564: Implement exponential backoff
+- [x] Task 565: Add transfer cancellation support
+- [x] Task 566: Add pause and resume capability
+- [x] Task 567: Create internal/recovery/checkpoint.go
+- [x] Task 568: Implement checkpoint creation API
+- [x] Task 569: Create memory state snapshot
+- [x] Task 570: Create register state snapshot
+- [x] Task 571: Create file state snapshot
+- [x] Task 572: Add checkpoint versioning
+- [x] Task 573: Track checkpoint sequence number
+- [x] Task 574: Add checkpoint integrity hash
+- [x] Task 575: Store checkpoint in PostgreSQL
+- [x] Task 576: Add checkpoint metadata storage
+- [x] Task 577: Store timestamp and node info
+- [x] Task 578: Implement checkpoint listing
+- [x] Task 579: List checkpoints for job
+- [x] Task 580: Sort by creation time
+- [x] Task 581: Implement checkpoint deletion
+- [x] Task 582: Delete old checkpoints automatically
+- [x] Task 583: Retain last N checkpoints per job
+- [x] Task 584: Add checkpoint age-based deletion
+- [x] Task 585: Delete checkpoints older than 30 days
+- [x] Task 586: Create internal/recovery/verification.go
+- [x] Task 587: Verify job state after checkpoint restore
+- [x] Task 588: Check memory integrity with checksum
+- [x] Task 589: Verify register values match expected
+- [x] Task 590: Check open file handles consistency
+- [x] Task 591: Add state verification reporting
+- [x] Task 592: Report verification status
+- [x] Task 593: Report any inconsistencies found
+- [x] Task 594: Add automatic healing triggers
+- [x] Task 595: Trigger checkpoint on warning threshold
+- [x] Task 596: Trigger checkpoint every 5 minutes
+- [x] Task 597: Add checkpoint coordination
+- [x] Task 598: Coordinate checkpoint across job tasks
+- [x] Task 599: Ensure all tasks reach checkpoint
+- [x] Task 600: Implement distributed checkpoint
+- [x] Task 601: Install @tanstack/react-query for data fetching
+- [x] Task 602: Install wagmi viem @wagmi/react-query for Web3
+- [x] Task 603: Install @supabase/supabase-js for backend
+- [x] Task 604: Install @supabase/ssr for SSR auth
+- [x] Task 605: Create providers/index.tsx with QueryClientProvider
+- [x] Task 606: Create providers/web3-providers.tsx with wagmi Config
+- [x] Task 607: Create providers/supabase-provider.tsx with client
+- [x] Task 608: Create providers/theme-provider.tsx with next-themes
+- [x] Task 609: Create hooks/use-jobs.ts with react-query queries
+- [x] Task 610: Create hooks/use-nodes.ts with react-query queries
+- [x] Task 611: Create hooks/use-auth.ts with Supabase auth
+- [x] Task 612: Create hooks/use-wallet.ts with wagmi hooks
+- [x] Task 613: Create hooks/use-escrow.ts with contract queries
+- [x] Task 614: Create hooks/use-sse.ts for server-sent events
+- [x] Task 615: Create lib/supabase.ts with typed API wrappers
+- [x] Task 616: Create lib/contracts.ts with ABI definitions
+- [x] Task 617: Create lib/utils.ts with helper functions
+- [x] Task 618: Create lib/formatters.ts with formatting utilities
+- [x] Task 619: Create app/(dashboard)/layout.tsx with providers
+- [x] Task 620: Create app/(dashboard)/dashboard/page.tsx
+- [x] Task 621: Create app/(dashboard)/jobs/page.tsx
+- [x] Task 622: Create app/(dashboard)/jobs/[id]/page.tsx
+- [x] Task 623: Create app/(dashboard)/jobs/new/page.tsx
+- [x] Task 624: Create app/(dashboard)/nodes/page.tsx
+- [x] Task 625: Create app/(dashboard)/nodes/[address]/page.tsx
+- [x] Task 626: Create app/(dashboard)/analytics/page.tsx
+- [x] Task 627: Create app/(dashboard)/wallet/page.tsx
+- [x] Task 628: Create app/(dashboard)/settings/page.tsx
+- [x] Task 629: Create components/layout/sidebar.tsx
+- [x] Task 630: Create components/layout/header.tsx
+- [x] Task 631: Create components/layout/mobile-nav.tsx
+- [x] Task 632: Create components/ui/card.tsx
+- [x] Task 633: Create components/ui/button.tsx
+- [x] Task 634: Create components/ui/input.tsx
+- [x] Task 635: Create components/ui/badge.tsx
+- [x] Task 636: Create components/ui/skeleton.tsx
+- [x] Task 637: Create components/ui/dialog.tsx
+- [x] Task 638: Create components/ui/dropdown-menu.tsx
+- [x] Task 639: Create components/ui/table.tsx
+- [x] Task 640: Create components/ui/tabs.tsx
+- [x] Task 641: Create components/ui/metric-card.tsx
+- [x] Task 642: Create components/ui/status-badge.tsx
+- [x] Task 643: Create components/ui/telemetry-table.tsx
+- [x] Task 644: Add Geist Sans font via next/font/google
+- [x] Task 645: Add Geist Mono font via next/font/google
+- [x] Task 646: Configure tailwind.config.ts with design tokens
+- [x] Task 647: Configure next.config.ts with image domains
+- [x] Task 648: Add environment variables for Supabase and wagmi
+- [x] Task 649: Create MetricCard component with sparkline
+- [x] Task 650: Display total active jobs count
+- [x] Task 651: Display total staked tokens
+- [x] Task 652: Display network uptime percentage
+- [x] Task 653: Display recent slashing events count
+- [x] Task 654: Add real-time WebSocket updates to dashboard
+- [x] Task 655: Subscribe to Supabase realtime for job updates
+- [x] Task 656: Create JobStatusChart component with recharts
+- [x] Task 657: Render pie chart of job status distribution
+- [x] Task 658: Create NodeMap component showing geographic distribution
+- [x] Task 659: Create RecentActivity component with activity feed
+- [x] Task 660: Display last 10 job events
+- [x] Task 661: Add infinite scroll to activity feed
+- [x] Task 662: Create NetworkStats component with live metrics
+- [x] Task 663: Display total GPU count across network
+- [x] Task 664: Display average VRAM utilization
+- [x] Task 665: Display total compute hours
+- [x] Task 666: Create WalletBalance component with wagmi useBalance
+- [x] Task 667: Display serverless credit balance
+- [x] Task 668: Display staked token amount
+- [x] Task 669: Create QuickActions component with shortcuts
+- [x] Task 670: Add shortcut to submit new job
+- [x] Task 671: Add shortcut to view nodes
+- [x] Task 672: Add shortcut to add funds
+- [x] Task 673: Create NotificationBell component with unread count
+- [x] Task 674: Fetch notifications from Supabase
+- [x] Task 675: Display notification dropdown on click
+- [x] Task 676: Mark notifications as read on view
+- [x] Task 677: Create UserMenu component with dropdown
+- [x] Task 678: Display user avatar and name
+- [x] Task 679: Add logout option
+- [x] Task 680: Add settings link
+- [x] Task 681: Implement dashboard auto-refresh every 30s
+- [x] Task 682: Use react-query refetchInterval for polling
+- [x] Task 683: Add manual refresh button
+- [x] Task 684: Implement pull-to-refresh on mobile
+- [x] Task 685: Create DashboardSkeleton component for loading
+- [x] Task 686: Show skeleton while data loads
+- [x] Task 687: Add animated skeleton transitions
+- [x] Task 688: Create EmptyState component for no data
+- [x] Task 689: Display friendly message when no jobs
+- [x] Task 690: Add CTA button to submit first job
+- [x] Task 691: Add error boundary to dashboard
+- [x] Task 692: Catch and display errors gracefully
+- [x] Task 693: Show retry button on error
+- [x] Task 694: Implement dashboard responsive layout
+- [x] Task 695: Show 3-column grid on desktop
+- [x] Task 696: Show 2-column grid on tablet
+- [x] Task 697: Show 1-column grid on mobile
+- [x] Task 698: Create DashboardHeader component
+- [x] Task 699: Display page title and breadcrumb
+- [x] Task 700: Add date range selector
+- [x] Task 701: Add export data button
+- [x] Task 702: Create DashboardGrid component for layout
+- [x] Task 703: Implement CSS grid with responsive columns
+- [x] Task 704: Add gap spacing between cards
+- [x] Task 705: Create MetricTrend component showing delta
+- [x] Task 706: Display percentage change vs last period
+- [x] Task 707: Show up/down arrow indicator
+- [x] Task 708: Color green for positive, red for negative
+- [x] Task 709: Create LiveIndicator component
+- [x] Task 710: Show pulsing green dot when connected
+- [x] Task 711: Show amber dot when stale
+- [x] Task 712: Show red dot when disconnected
+- [x] Task 713: Add connection status to header
+- [x] Task 714: Create JobsPageHeader component
+- [x] Task 715: Display total job count
+- [x] Task 716: Add filter by status dropdown
+- [x] Task 717: Add sort by dropdown (date, status)
+- [x] Task 718: Add search input for job ID
+- [x] Task 719: Create JobsTable component with react-table
+- [x] Task 720: Display job ID (truncated with copy button)
+- [x] Task 721: Display job type (inference, training, etc)
+- [x] Task 722: Display status badge (pending, running, complete, failed)
+- [x] Task 723: Display node address (truncated)
+- [x] Task 724: Display created date (relative time)
+- [x] Task 725: Display actions (view, cancel)
+- [x] Task 726: Add row click to navigate to job detail
+- [x] Task 727: Add pagination with page numbers
+- [x] Task 728: Set 20 jobs per page default
+- [x] Task 729: Add page size selector (10, 20, 50, 100)
+- [x] Task 730: Create JobStatusFilter component
+- [x] Task 731: Add filter chips for each status
+- [x] Task 732: Add 'All' filter option
+- [x] Task 733: Support multiple status selection
+- [x] Task 734: Create JobTypeFilter component
+- [x] Task 735: Filter by job type (LLM inference, batch, etc)
+- [x] Task 736: Add date range filter
+- [x] Task 737: Filter by date range picker
+- [x] Task 738: Create JobsEmptyState component
+- [x] Task 739: Display when no jobs match filters
+- [x] Task 740: Add clear filters button
+- [x] Task 741: Create JobDetailPage component
+- [x] Task 742: Display full job information
+- [x] Task 743: Show job configuration details
+- [x] Task 744: Show node assignment information
+- [x] Task 745: Show timing information (created, started, completed)
+- [x] Task 746: Create JobLogsViewer component
+- [x] Task 747: Stream logs via SSE connection
+- [x] Task 748: Add log level filtering (info, warn, error)
+- [x] Task 749: Add search within logs

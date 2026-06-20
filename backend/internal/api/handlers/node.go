@@ -10,8 +10,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/gorilla/mux"
+	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/tentrist.ai/backend/internal/contract"
 	"github.com/tentrist.ai/backend/pkg/types"
 )
 
@@ -23,6 +26,7 @@ type NodeHandler struct {
 	// External dependencies
 	contractClient interface{}
 	supabaseClient interface{}
+	db            *pgxpool.Pool
 }
 
 // NewNodeHandler creates a new NodeHandler with in-memory storage.
@@ -40,6 +44,11 @@ func (h *NodeHandler) SetContractClient(client interface{}) {
 // SetSupabaseClient sets the Supabase client for database operations.
 func (h *NodeHandler) SetSupabaseClient(client interface{}) {
 	h.supabaseClient = client
+}
+
+// SetDB sets the PostgreSQL connection pool.
+func (h *NodeHandler) SetDB(pool *pgxpool.Pool) {
+	h.db = pool
 }
 
 // NodeRegisterRequest represents a node registration request.
@@ -120,20 +129,6 @@ func (h *NodeHandler) RegisterNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Convert to fixed-size array
-	var nodeAddr [20]byte
-	copy(nodeAddr[:], nodeBytes)
-
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	// Check if node is already registered
-	nodeID := req.NodeAddress
-	if _, exists := h.nodes[nodeID]; exists {
-		http.Error(w, "node is already registered", http.StatusConflict)
-		return
-	}
-
 	// Parse stake amount
 	stakeAmount := big.NewInt(0)
 	if req.StakeAmount != "" {
@@ -141,16 +136,48 @@ func (h *NodeHandler) RegisterNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now()
-	node := &types.Node{
-		Address:       nodeAddr,
-		StakeAmount:   stakeAmount,
-		Reputation:    big.NewInt(0),
-		Status:        types.NodeOnline,
-		LastHeartbeat: now,
-		RegisteredAt:  now,
+
+	// PostgreSQL is the primary store; fall back to in-memory if unavailable
+	ctx, cancel := withDBTimeout(r.Context())
+	defer cancel()
+
+	if h.db != nil {
+		_, err = h.db.Exec(ctx,
+			`INSERT INTO public.nodes (wallet_address, status, reputation_score, created_at, updated_at)
+			 VALUES ($1, 'online', 0, $2, $2)
+			 ON CONFLICT (wallet_address) DO UPDATE SET
+				status = 'online', updated_at = $2`,
+			req.NodeAddress,
+			now,
+		)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to persist node: %v", err), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		// Fallback: store in-memory
+		h.mu.Lock()
+		h.nodes[req.NodeAddress] = &types.Node{
+			Address:      parseAddress(req.NodeAddress),
+			Status:       types.NodeOnline,
+			StakeAmount:  stakeAmount,
+			Reputation:   big.NewInt(0),
+			RegisteredAt: now,
+		}
+		h.mu.Unlock()
 	}
 
-	h.nodes[nodeID] = node
+	// Call contract Stake if contract client is available and stake amount > 0
+	if stakeAmount.Sign() > 0 && h.contractClient != nil {
+		if cc, ok := h.contractClient.(*contract.ContractClient); ok {
+			nodeAddr := common.HexToAddress(req.NodeAddress)
+			_, stkErr := cc.Stake(ctx, nodeAddr, stakeAmount)
+			if stkErr != nil {
+				http.Error(w, fmt.Sprintf("failed to stake on contract: %v", stkErr), http.StatusInternalServerError)
+				return
+			}
+		}
+	}
 
 	resp := NodeRegisterResponse{
 		NodeAddress:  req.NodeAddress,
@@ -170,56 +197,137 @@ func (h *NodeHandler) GetNode(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	nodeID := vars["id"]
 
+	// Try PostgreSQL first if available
+	if h.db != nil {
+		ctx, cancel := withDBTimeout(r.Context())
+		defer cancel()
+
+		var dbNode struct {
+			WalletAddress   string
+			Status          string
+			ReputationScore int
+			LastHeartbeatAt *time.Time
+			CreatedAt       time.Time
+		}
+
+		err := h.db.QueryRow(ctx,
+			`SELECT wallet_address, status, reputation_score, last_heartbeat_at, created_at
+			 FROM public.nodes
+			 WHERE wallet_address = $1 OR id = $1`,
+			nodeID,
+		).Scan(
+			&dbNode.WalletAddress,
+			&dbNode.Status,
+			&dbNode.ReputationScore,
+			&dbNode.LastHeartbeatAt,
+			&dbNode.CreatedAt,
+		)
+
+		if err == nil {
+			lastHeartbeat := int64(0)
+			if dbNode.LastHeartbeatAt != nil {
+				lastHeartbeat = dbNode.LastHeartbeatAt.Unix()
+			}
+			resp := NodeStatusResponse{
+				NodeAddress:   dbNode.WalletAddress,
+				Reputation:    fmt.Sprintf("%d", dbNode.ReputationScore),
+				Status:        dbNode.Status,
+				LastHeartbeat: lastHeartbeat,
+				RegisteredAt:  dbNode.CreatedAt.Unix(),
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+	}
+
+	// Fallback: try in-memory
 	h.mu.RLock()
 	node, exists := h.nodes[nodeID]
 	h.mu.RUnlock()
-
 	if !exists {
 		http.Error(w, "node not found", http.StatusNotFound)
 		return
 	}
-
+	lastHeartbeat := int64(0)
+	if !node.LastHeartbeat.IsZero() {
+		lastHeartbeat = node.LastHeartbeat.Unix()
+	}
 	resp := NodeStatusResponse{
-		NodeAddress:  nodeID,
-		StakeAmount: node.StakeAmount.String(),
-		Reputation:  node.Reputation.String(),
-		Status:     nodeStatusToString(node.Status),
-		LastHeartbeat: node.LastHeartbeat.Unix(),
+		NodeAddress:   nodeID,
+		Reputation:    node.Reputation.String(),
+		Status:        nodeStatusToString(node.Status),
+		LastHeartbeat: lastHeartbeat,
 		RegisteredAt:  node.RegisteredAt.Unix(),
 	}
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
 
 // GetEligibleNodes handles GET /api/v1/nodes/eligible — List nodes meeting stake threshold.
 func (h *NodeHandler) GetEligibleNodes(w http.ResponseWriter, r *http.Request) {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	// Minimum stake threshold (in wei) - approximately 1 ETH
 	minStake := big.NewInt(1e18)
-
 	var eligible []NodeStatusResponse
-	for id, node := range h.nodes {
-		// Node must be online and have sufficient stake
-		if node.Status == types.NodeOnline && node.StakeAmount.Cmp(minStake) >= 0 {
-			eligible = append(eligible, NodeStatusResponse{
-				NodeAddress:   id,
-				StakeAmount:  node.StakeAmount.String(),
-				Reputation:   node.Reputation.String(),
-				Status:       nodeStatusToString(node.Status),
-				LastHeartbeat: node.LastHeartbeat.Unix(),
-				RegisteredAt:  node.RegisteredAt.Unix(),
-			})
+
+	if h.db != nil {
+		ctx, cancel := withDBTimeout(r.Context())
+		defer cancel()
+		rows, err := h.db.Query(ctx,
+			`SELECT wallet_address, status, reputation_score, last_heartbeat_at, created_at, stake_amount
+			 FROM public.nodes WHERE status = 'online' AND stake_amount >= $1`,
+			minStake,
+		)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var node struct {
+					WalletAddress   string
+					Status         string
+					ReputationScore int
+					LastHeartbeatAt *time.Time
+					CreatedAt       time.Time
+					StakeAmount    string
+				}
+				if err := rows.Scan(&node.WalletAddress, &node.Status, &node.ReputationScore,
+					&node.LastHeartbeatAt, &node.CreatedAt, &node.StakeAmount); err != nil {
+					continue
+				}
+				lastHeartbeat := int64(0)
+				if node.LastHeartbeatAt != nil {
+					lastHeartbeat = node.LastHeartbeatAt.Unix()
+				}
+				eligible = append(eligible, NodeStatusResponse{
+					NodeAddress:   node.WalletAddress,
+					StakeAmount:   node.StakeAmount,
+					Reputation:    fmt.Sprintf("%d", node.ReputationScore),
+					Status:        node.Status,
+					LastHeartbeat: lastHeartbeat,
+					RegisteredAt:  node.CreatedAt.Unix(),
+				})
+			}
 		}
 	}
 
-	resp := EligibleNodesResponse{
-		Nodes: eligible,
-		Count: len(eligible),
+	// Fallback: filter in-memory nodes
+	if h.db == nil || len(eligible) == 0 {
+		h.mu.RLock()
+		for addr, node := range h.nodes {
+			if node.Status == types.NodeOnline && node.StakeAmount != nil &&
+				node.StakeAmount.Cmp(minStake) >= 0 {
+				eligible = append(eligible, NodeStatusResponse{
+					NodeAddress:   addr,
+					StakeAmount:   node.StakeAmount.String(),
+					Reputation:   node.Reputation.String(),
+					Status:        nodeStatusToString(node.Status),
+					LastHeartbeat: 0,
+					RegisteredAt:  node.RegisteredAt.Unix(),
+				})
+			}
+		}
+		h.mu.RUnlock()
 	}
 
+	resp := EligibleNodesResponse{Nodes: eligible, Count: len(eligible)}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
@@ -246,21 +354,60 @@ func (h *NodeHandler) StakeNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	// PostgreSQL primary; call contract if available, fall back to in-memory
+	ctx, cancel := withDBTimeout(r.Context())
+	defer cancel()
 
-	node, exists := h.nodes[nodeID]
-	if !exists {
-		http.Error(w, "node not found", http.StatusNotFound)
-		return
+	// Call contract Stake if contract client is available
+	if h.contractClient != nil {
+		if cc, ok := h.contractClient.(*contract.ContractClient); ok {
+			nodeAddr := common.HexToAddress(nodeID)
+			_, stkErr := cc.Stake(ctx, nodeAddr, amount)
+			if stkErr != nil {
+				http.Error(w, fmt.Sprintf("failed to stake on contract: %v", stkErr), http.StatusInternalServerError)
+				return
+			}
+		}
 	}
 
-	// Add to stake amount
-	node.StakeAmount = new(big.Int).Add(node.StakeAmount, amount)
+	if h.db != nil {
+		_, dbErr := h.db.Exec(ctx,
+			`UPDATE public.nodes SET stake_amount = stake_amount + $1, updated_at = NOW()
+			 WHERE wallet_address = $2 OR id = $2`,
+			amount,
+			nodeID,
+		)
+		if dbErr != nil {
+			http.Error(w, fmt.Sprintf("failed to update node: %v", dbErr), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		// Fallback: update in-memory
+		h.mu.Lock()
+		if n, ok := h.nodes[nodeID]; ok {
+			if n.StakeAmount == nil {
+				n.StakeAmount = new(big.Int)
+			}
+			n.StakeAmount.Add(n.StakeAmount, amount)
+			h.mu.Unlock()
+		} else {
+			h.mu.Unlock()
+			http.Error(w, "node not found", http.StatusNotFound)
+			return
+		}
+	}
+
+	// Read total stake for response
+	h.mu.RLock()
+	totalStake := amount.String()
+	if n, ok := h.nodes[nodeID]; ok && n.StakeAmount != nil {
+		totalStake = n.StakeAmount.String()
+	}
+	h.mu.RUnlock()
 
 	resp := NodeStakeResponse{
 		NodeAddress: nodeID,
-		StakeAmount: node.StakeAmount.String(),
+		StakeAmount: totalStake,
 		Status:      "staked",
 		Message:     fmt.Sprintf("successfully staked %s", amount.String()),
 	}

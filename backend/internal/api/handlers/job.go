@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tentrist.ai/backend/pkg/types"
 )
@@ -31,6 +33,7 @@ type JobHandler struct {
 	// External dependencies
 	contractClient interface{}
 	supabaseClient interface{}
+	db            *pgxpool.Pool
 }
 
 // NodeSelector interface for querying healthy standby nodes.
@@ -91,6 +94,17 @@ func (h *JobHandler) SetContractClient(client interface{}) {
 func (h *JobHandler) SetSupabaseClient(client interface{}) {
 	h.supabaseClient = client
 }
+
+// SetDB sets the PostgreSQL connection pool.
+func (h *JobHandler) SetDB(pool *pgxpool.Pool) {
+	h.db = pool
+}
+
+// withDBTimeout wraps a context with a 5-second timeout for DB operations.
+func withDBTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, 5*time.Second)
+}
+
 
 // ServerlessJobSubmitRequest represents a serverless job submission request.
 // This replaces the old model where users specified node addresses.
@@ -189,17 +203,14 @@ func (h *JobHandler) SubmitJob(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "clientId is required", http.StatusBadRequest)
 		return
 	}
-
 	if req.RequiredUptime == 0 || req.RequiredUptime > 10000 {
 		http.Error(w, "requiredUptime must be between 1 and 10000 (basis points)", http.StatusBadRequest)
 		return
 	}
-
 	if req.RequiredThroughput == 0 {
 		http.Error(w, "requiredThroughput must be greater than 0", http.StatusBadRequest)
 		return
 	}
-
 	if req.DeadlineTimestamp == 0 {
 		http.Error(w, "deadlineTimestamp is required", http.StatusBadRequest)
 		return
@@ -211,31 +222,47 @@ func (h *JobHandler) SubmitJob(w http.ResponseWriter, r *http.Request) {
 		jobIDBytes[i] = byte(time.Now().UnixNano() % 256)
 	}
 	jobID := hex.EncodeToString(jobIDBytes[:])
-
 	deadline := time.Unix(req.DeadlineTimestamp, 0)
 	now := time.Now()
 
-	// Create the job (legacy model - not serverless)
-	job := &types.Job{
+	// Try PostgreSQL first if available
+	if h.db != nil {
+		ctx, cancel := withDBTimeout(r.Context())
+		defer cancel()
+		_, err := h.db.Exec(ctx,
+			`INSERT INTO public.jobs (job_id_256, user_id, status, job_type,
+			 sla_uptime_required, sla_throughput_required, deadline,
+			 budget_usd, created_at, updated_at)
+			 VALUES ($1, $2, 'pending', 'dedicated', $3, $4, $5, $6, $7, $7)`,
+			jobID,
+			req.ClientID,
+			req.RequiredUptime,
+			req.RequiredThroughput,
+			deadline,
+			0,
+			now,
+		)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to persist job: %v", err), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Always cache in-memory for fast in-process reads
+	h.mu.Lock()
+	h.jobs[jobID] = &types.Job{
 		ID:        jobIDBytes,
 		ClientID:  parseAddress(req.ClientID),
 		Status:    types.JobPending,
 		CreatedAt: now,
 		Deadline:  deadline,
-		// Legacy: no metering fields populated for dedicated model
 	}
-
-	// Create SLA benchmark
-	sla := &types.SLABenchmark{
+	h.slas[jobID] = &types.SLABenchmark{
 		RequiredUptime:     req.RequiredUptime,
 		RequiredThroughput: req.RequiredThroughput,
 		Deadline:          deadline,
 		Fulfilled:         false,
 	}
-
-	h.mu.Lock()
-	h.jobs[jobID] = job
-	h.slas[jobID] = sla
 	h.mu.Unlock()
 
 	resp := JobSubmitResponse{
@@ -308,47 +335,62 @@ func (h *JobHandler) SubmitServerlessJob(w http.ResponseWriter, r *http.Request)
 		assignedNode = "pool-standby-001"
 	}
 
-	// Create the serverless job
-	job := &types.Job{
-		ID:        jobIDBytes,
-		ClientID:  parseAddress(req.ClientID),
-		Status:    types.JobRunning, // Immediately set to running when assigned
-		CreatedAt: now,
-		Deadline:  deadline,
-		// Serverless metering fields
-		MeteredType:  meteredType,
-		RatePerUnit:  ratePerUnit,
-		UsageCounter:  0,
-		TotalBilled:  big.NewInt(0),
-		IsServerless: true,
-	}
+	// Try PostgreSQL if available
+	if h.db != nil {
+		ctx, cancel := withDBTimeout(r.Context())
+		defer cancel()
 
-	// Set assigned node address
-	if len(assignedNode) >= 2 && assignedNode[:2] == "0x" {
-		nodeBytes, _ := hex.DecodeString(assignedNode[2:])
-		if len(nodeBytes) == 20 {
-			var nodeAddr [20]byte
-			copy(nodeAddr[:], nodeBytes)
-			job.AssignedNodes = [][20]byte{nodeAddr}
+		// Look up node_id from wallet address
+		var nodeID *string
+		if len(assignedNode) >= 2 && assignedNode[:2] == "0x" {
+			var dbNodeID string
+			err := h.db.QueryRow(ctx,
+				`SELECT id FROM public.nodes WHERE wallet_address = $1`,
+				assignedNode,
+			).Scan(&dbNodeID)
+			if err == nil {
+				nodeID = &dbNodeID
+			}
+		}
+
+		// Insert job into PostgreSQL
+		_, err := h.db.Exec(ctx,
+			`INSERT INTO public.jobs (job_id_256, user_id, node_id, status, job_type,
+				input_payload, sla_uptime_required, sla_throughput_required, deadline,
+				budget_usd, created_at, updated_at)
+			 VALUES ($1, $2, $3, 'running', 'serverless', $4, $5, $6, $7, $8, $9, $9)`,
+			jobID,
+			req.ClientID,
+			nodeID,
+			string(req.WorkloadPayload),
+			req.RequiredUptime,
+			req.RequiredThroughput,
+			deadline,
+			0,
+			now,
+		)
+		if err != nil {
+			fmt.Printf("warning: failed to persist serverless job to DB: %v\n", err)
 		}
 	}
 
-	// Create SLA benchmark
-	sla := &types.SLABenchmark{
+	// Always cache in-memory for fast in-process reads
+	h.mu.Lock()
+	h.jobs[jobID] = &types.Job{
+		ID:        jobIDBytes,
+		ClientID:  parseAddress(req.ClientID),
+		Status:    types.JobRunning,
+		CreatedAt: now,
+		Deadline:  deadline,
+		MeteredType: types.TimeBased,
+		RatePerUnit: ratePerUnit,
+		TotalBilled: big.NewInt(0),
+	}
+	h.slas[jobID] = &types.SLABenchmark{
 		RequiredUptime:     req.RequiredUptime,
 		RequiredThroughput: req.RequiredThroughput,
 		Deadline:          deadline,
 		Fulfilled:         false,
-	}
-
-	// Initialize metering record for this job
-	h.mu.Lock()
-	h.jobs[jobID] = job
-	h.slas[jobID] = sla
-	h.metering[jobID] = &MeteringRecord{
-		JobID:    jobID,
-		StartTime: now,
-		Status:   MeteringActive,
 	}
 	h.mu.Unlock()
 
@@ -370,54 +412,122 @@ func (h *JobHandler) GetJob(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	jobID := vars["id"]
 
+	// Try PostgreSQL first if db is available
+	if h.db != nil {
+		ctx, cancel := withDBTimeout(r.Context())
+		defer cancel()
+
+		var dbJob struct {
+			ID                     string
+			Status                 string
+			JobType                string
+			NodeID                 *string
+			SlaUptimeRequired      *int
+			SlaThroughputRequired  *int64
+			Deadline               *time.Time
+			CreatedAt              time.Time
+			BudgetUsd             *float64
+			PriceChargedUsd        *float64
+		}
+
+		err := h.db.QueryRow(ctx,
+			`SELECT id, status, job_type, node_id, sla_uptime_required,
+			 sla_throughput_required, deadline, created_at, budget_usd, price_charged_usd
+			 FROM public.jobs WHERE job_id_256 = $1`,
+			jobID,
+		).Scan(
+			&dbJob.ID,
+			&dbJob.Status,
+			&dbJob.JobType,
+			&dbJob.NodeID,
+			&dbJob.SlaUptimeRequired,
+			&dbJob.SlaThroughputRequired,
+			&dbJob.Deadline,
+			&dbJob.CreatedAt,
+			&dbJob.BudgetUsd,
+			&dbJob.PriceChargedUsd,
+		)
+
+		if err == nil {
+			resp := JobStatusResponse{
+				JobID:     jobID,
+				Status:    dbJob.Status,
+				Deadline:  dbJob.Deadline.Unix(),
+				CreatedAt: dbJob.CreatedAt.Unix(),
+			}
+			if dbJob.NodeID != nil {
+				resp.AssignedNodes = []string{*dbJob.NodeID}
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+	}
+
+	// Fallback: try in-memory
 	h.mu.RLock()
 	job, exists := h.jobs[jobID]
 	h.mu.RUnlock()
-
 	if !exists {
 		http.Error(w, "job not found", http.StatusNotFound)
 		return
 	}
-
-	assignedNodes := make([]string, len(job.AssignedNodes))
-	for i, node := range job.AssignedNodes {
-		assignedNodes[i] = hex.EncodeToString(node[:])
-	}
-
+	status := jobStatusToString(job.Status)
 	resp := JobStatusResponse{
-		JobID:         jobID,
-		ClientID:      hex.EncodeToString(job.ClientID[:]),
-		Status:        jobStatusToString(job.Status),
-		AssignedNodes: assignedNodes,
-		CheckpointRef: job.CheckpointRef,
-		CreatedAt:     job.CreatedAt.Unix(),
-		Deadline:      job.Deadline.Unix(),
-		IsServerless:  job.IsServerless,
+		JobID:     jobID,
+		ClientID:  string(job.ClientID[:]),
+		Status:    status,
+		Deadline:  job.Deadline.Unix(),
+		CreatedAt: job.CreatedAt.Unix(),
 	}
-
-	if job.TotalBilled != nil {
-		resp.TotalBilled = job.TotalBilled.String()
-	}
-	resp.UsageCounter = job.UsageCounter
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
 
-// GetSLA handles GET /api/v1/jobs/:id/sla — Get SLA benchmarks.
+// GetSLA handles GET /api/v1/jobs/:id/sla — Get SLA benchmarks from PostgreSQL.
 func (h *JobHandler) GetSLA(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	jobID := vars["id"]
 
+	// Try PostgreSQL first if available
+	if h.db != nil {
+		ctx, cancel := withDBTimeout(r.Context())
+		defer cancel()
+
+		var slaUptime *int
+		var slaThroughput *int64
+		var deadline *time.Time
+		var fulfilled *bool
+
+		err := h.db.QueryRow(ctx,
+			`SELECT sla_uptime_required, sla_throughput_required, deadline, fulfilled
+			 FROM public.jobs WHERE job_id_256 = $1`,
+			jobID,
+		).Scan(&slaUptime, &slaThroughput, &deadline, &fulfilled)
+
+		if err == nil {
+			resp := SLAResponse{
+				JobID:              jobID,
+				RequiredUptime:     uint64(*slaUptime),
+				RequiredThroughput: uint64(*slaThroughput),
+				Deadline:          deadline.Unix(),
+				Fulfilled:         *fulfilled,
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+	}
+
+	// Fallback: try in-memory
 	h.mu.RLock()
 	sla, exists := h.slas[jobID]
 	h.mu.RUnlock()
-
 	if !exists {
 		http.Error(w, "SLA not found for job", http.StatusNotFound)
 		return
 	}
-
 	resp := SLAResponse{
 		JobID:              jobID,
 		RequiredUptime:     sla.RequiredUptime,
@@ -425,7 +535,6 @@ func (h *JobHandler) GetSLA(w http.ResponseWriter, r *http.Request) {
 		Deadline:          sla.Deadline.Unix(),
 		Fulfilled:         sla.Fulfilled,
 	}
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
@@ -435,36 +544,67 @@ func (h *JobHandler) CancelJob(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	jobID := vars["id"]
 
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	// Try PostgreSQL first if available
+	if h.db != nil {
+		ctx, cancel := withDBTimeout(r.Context())
+		defer cancel()
 
-	job, exists := h.jobs[jobID]
-	if !exists {
+		result, err := h.db.Exec(ctx,
+			`UPDATE public.jobs SET status = 'cancelled', updated_at = NOW()
+			 WHERE job_id_256 = $1 AND status IN ('pending', 'running')`,
+			jobID,
+		)
+		if err == nil {
+			rowsAffected := result.RowsAffected()
+			if rowsAffected > 0 {
+				// Stop metering if active (in-memory tracking)
+				h.mu.Lock()
+				if mr, ok := h.metering[jobID]; ok && mr.Status == MeteringActive {
+					mr.EndTime = time.Now()
+					mr.Status = MeteringDone
+				}
+				h.mu.Unlock()
+
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(CancelResponse{
+					JobID:   jobID,
+					Status:  "cancelled",
+					Message: "job has been cancelled successfully",
+				})
+				return
+			}
+		}
+	}
+
+	// Fallback: cancel in-memory
+	h.mu.Lock()
+	job, jobExists := h.jobs[jobID]
+	if !jobExists {
+		h.mu.Unlock()
 		http.Error(w, "job not found", http.StatusNotFound)
 		return
 	}
+	if job.Status == types.JobPending || job.Status == types.JobRunning {
+		job.Status = types.JobCancelled
+		h.mu.Unlock()
 
-	if job.Status != types.JobPending && job.Status != types.JobRunning {
-		http.Error(w, "job cannot be cancelled in current state", http.StatusConflict)
+		// Stop metering if active
+		if mr, ok := h.metering[jobID]; ok && mr.Status == MeteringActive {
+			mr.EndTime = time.Now()
+			mr.Status = MeteringDone
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(CancelResponse{
+			JobID:   jobID,
+			Status:  "cancelled",
+			Message: "job has been cancelled successfully",
+		})
 		return
 	}
+	h.mu.Unlock()
 
-	job.Status = types.JobFailed
-
-	// Stop metering if active
-	if mr, ok := h.metering[jobID]; ok && mr.Status == MeteringActive {
-		mr.EndTime = time.Now()
-		mr.Status = MeteringDone
-	}
-
-	resp := CancelResponse{
-		JobID:   jobID,
-		Status:  "cancelled",
-		Message: "job has been cancelled successfully",
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	http.Error(w, "job cannot be cancelled in current state", http.StatusConflict)
 }
 
 // GetMetering handles GET /api/v1/jobs/:id/metering — Get metering record.
@@ -597,7 +737,11 @@ func (h *JobHandler) StopMetering(w http.ResponseWriter, r *http.Request) {
 		mr.BilledMicroUSDC = billed
 
 		// Update job total billed
-		job.TotalBilled = big.NewInt(0).Add(job.TotalBilled, billed)
+		if job.TotalBilled != nil {
+			job.TotalBilled = job.TotalBilled.Add(job.TotalBilled, billed)
+		} else {
+			job.TotalBilled = billed
+		}
 		job.UsageCounter += req.Units
 	}
 
@@ -638,6 +782,8 @@ func jobStatusToString(status types.JobStatus) string {
 		return "failed"
 	case types.JobRequeued:
 		return "requeued"
+	case types.JobCancelled:
+		return "cancelled"
 	default:
 		return "unknown"
 	}

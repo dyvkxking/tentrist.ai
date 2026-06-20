@@ -12,48 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RequireAuth } from "@/components/providers/require-auth";
-
-interface Contract {
-  name: string;
-  address: string;
-  network: string;
-  lastUpdated: number;
-}
-
-function generateMockContracts(): Contract[] {
-  return [
-    {
-      name: "Escrow",
-      address: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
-      network: "Ethereum Mainnet",
-      lastUpdated: Date.now() - 2 * 60 * 60 * 1000,
-    },
-    {
-      name: "SLAContract",
-      address: "0x862964cE01621d2F447D1A4d5d7dE0286FA8918f",
-      network: "Ethereum Mainnet",
-      lastUpdated: Date.now() - 5 * 60 * 60 * 1000,
-    },
-    {
-      name: "SlashManager",
-      address: "0x3d9dCB725C5B078cC8d2E8a4f4C7bD9e5f6a8b7c",
-      network: "Ethereum Mainnet",
-      lastUpdated: Date.now() - 1 * 60 * 60 * 1000,
-    },
-    {
-      name: "ReputationLedger",
-      address: "0xfedc0987654321abcdef0123456789abcdef0123",
-      network: "Ethereum Mainnet",
-      lastUpdated: Date.now() - 3 * 60 * 60 * 1000,
-    },
-    {
-      name: "Governance",
-      address: "0x2468ace13579bdfc0246f8db9310019283746fab",
-      network: "Ethereum Mainnet",
-      lastUpdated: Date.now() - 24 * 60 * 60 * 1000,
-    },
-  ];
-}
+import { adminListContracts } from "@/lib/supabase-admin";
 
 function formatRelativeTime(timestamp: number): string {
   const diff = Date.now() - timestamp;
@@ -72,7 +31,57 @@ export default function AdminContractsPage() {
 }
 
 function AdminContractsContent() {
-  const [contracts] = React.useState<Contract[]>(generateMockContracts());
+  const [contracts, setContracts] = React.useState<any[] | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    adminListContracts()
+      .then((data) => {
+        setContracts(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err.message || "Failed to load contracts");
+        setLoading(false);
+      });
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <div className="h-8 w-64 bg-bg-surface rounded animate-pulse" />
+            <div className="h-4 w-48 bg-bg-surface rounded animate-pulse mt-1" />
+          </div>
+        </div>
+        <Card className="bg-bg-surface/80">
+          <CardContent className="p-0">
+            <div className="space-y-4 p-4">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="h-12 bg-bg-base rounded animate-pulse" />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Card className="bg-bg-surface/80 border-indicator-slashed">
+          <CardContent className="p-6 text-center">
+            <p className="text-sm text-indicator-slashed">{error}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!contracts) return null;
 
   return (
     <div className="flex flex-col gap-4">

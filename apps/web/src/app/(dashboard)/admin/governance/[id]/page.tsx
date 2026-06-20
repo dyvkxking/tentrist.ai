@@ -19,31 +19,31 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RequireAuth } from "@/components/providers/require-auth";
+import { adminGetProposal } from "@/lib/supabase-admin";
 
 type ProposalStatus = "pending" | "active" | "passed" | "rejected";
 
-function generateMockProposalDetail(id: string) {
-  return {
-    id,
-    title: "Increase slash percentage from 5% to 10%",
-    description: "This proposal seeks to increase the slash percentage for SLA breaches from the current 5% to 10%. This change is intended to improve network reliability by creating stronger incentives for nodes to maintain their SLA commitments. Analysis of recent slash events shows that the current 5% penalty is insufficient to deter repeated SLA violations, particularly among lower-stake nodes. By doubling the penalty, we expect to see a significant reduction in missed heartbeats and improved overall network uptime.",
-    type: "Parameter Change" as const,
-    status: "active" as ProposalStatus,
-    parameterToChange: "slashPercentage",
-    currentValue: "5",
-    newValue: "10",
-    votesFor: 1250,
-    votesAgainst: 340,
-    quorum: 2000,
-    createdAt: Date.now() - 2 * 24 * 60 * 60 * 1000,
-    deadline: Date.now() + 5 * 24 * 60 * 60 * 1000,
-    proposer: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
-    txHash: "0xabc123...def456",
-  };
+interface ProposalDetail {
+  id: string;
+  title: string;
+  description: string;
+  type: "Parameter Change" | "Contract Upgrade" | "Budget";
+  status: ProposalStatus;
+  parameter_to_change: string;
+  current_value: string;
+  new_value: string;
+  votes_for: number;
+  votes_against: number;
+  quorum: number;
+  created_at: string;
+  deadline: string;
+  proposer: string;
+  tx_hash: string;
 }
 
-function formatDate(timestamp: number): string {
-  return new Date(timestamp).toLocaleDateString("en-US", {
+function formatDate(timestamp: string | number): string {
+  const ts = typeof timestamp === "string" ? timestamp : new Date(timestamp).toISOString();
+  return new Date(ts).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -52,8 +52,9 @@ function formatDate(timestamp: number): string {
   });
 }
 
-function formatRelativeTime(timestamp: number): string {
-  const diff = timestamp - Date.now();
+function formatRelativeTime(timestamp: string | number): string {
+  const ts = typeof timestamp === "string" ? new Date(timestamp).getTime() : timestamp;
+  const diff = ts - Date.now();
   if (diff < 0) return "Ended";
   if (diff < 60000) return "Ending soon";
   if (diff < 3600000) return `${Math.floor(diff / 60000)}m left`;
@@ -84,12 +85,47 @@ interface AdminProposalDetailContentProps {
 }
 
 function AdminProposalDetailContent({ proposalId }: AdminProposalDetailContentProps) {
-  const proposal = generateMockProposalDetail(proposalId);
+  const [proposal, setProposal] = React.useState<ProposalDetail | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
   const [isVoting, setIsVoting] = React.useState(false);
 
-  const totalVotes = proposal.votesFor + proposal.votesAgainst;
-  const forPercent = totalVotes > 0 ? (proposal.votesFor / totalVotes) * 100 : 0;
-  const againstPercent = totalVotes > 0 ? (proposal.votesAgainst / totalVotes) * 100 : 0;
+  React.useEffect(() => {
+    adminGetProposal(proposalId)
+      .then(setProposal)
+      .catch((err) => setError(err.message));
+  }, [proposalId]);
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-indicator-slashed">Failed to load proposal: {error}</p>
+      </div>
+    );
+  }
+
+  if (!proposal) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="h-10 w-10 bg-bg-surface rounded animate-pulse" />
+            <div className="flex flex-col gap-1">
+              <div className="h-8 w-48 bg-bg-surface rounded animate-pulse" />
+              <div className="h-4 w-96 bg-bg-surface rounded animate-pulse mt-1" />
+            </div>
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="h-64 bg-bg-surface rounded animate-pulse md:col-span-2" />
+          <div className="h-64 bg-bg-surface rounded animate-pulse" />
+        </div>
+      </div>
+    );
+  }
+
+  const totalVotes = proposal.votes_for + proposal.votes_against;
+  const forPercent = totalVotes > 0 ? (proposal.votes_for / totalVotes) * 100 : 0;
+  const againstPercent = totalVotes > 0 ? (proposal.votes_against / totalVotes) * 100 : 0;
   const quorumPercent = (totalVotes / proposal.quorum) * 100;
   const StatusIcon = statusConfig[proposal.status].icon;
 
@@ -159,14 +195,14 @@ function AdminProposalDetailContent({ proposalId }: AdminProposalDetailContentPr
               </div>
               <div className="p-3 bg-bg-base rounded-lg">
                 <div className="text-xs text-foreground-muted mb-1">Parameter</div>
-                <div className="text-sm font-mono-data">{proposal.parameterToChange}</div>
+                <div className="text-sm font-mono-data">{proposal.parameter_to_change}</div>
               </div>
               <div className="p-3 bg-bg-base rounded-lg">
                 <div className="text-xs text-foreground-muted mb-1">Change</div>
                 <div className="text-sm font-mono-data">
-                  <span className="text-indicator-slashed">{proposal.currentValue}</span>
+                  <span className="text-indicator-slashed">{proposal.current_value}</span>
                   {" -> "}
-                  <span className="text-indicator-active">{proposal.newValue}</span>
+                  <span className="text-indicator-active">{proposal.new_value}</span>
                 </div>
               </div>
             </div>
@@ -186,7 +222,7 @@ function AdminProposalDetailContent({ proposalId }: AdminProposalDetailContentPr
                   For
                 </span>
                 <span className="font-mono-data text-indicator-active">
-                  {proposal.votesFor.toLocaleString()} ETH
+                  {proposal.votes_for.toLocaleString()} ETH
                 </span>
               </div>
               <div className="h-2 bg-indicator-slashed/20 rounded-full overflow-hidden">
@@ -204,7 +240,7 @@ function AdminProposalDetailContent({ proposalId }: AdminProposalDetailContentPr
                   Against
                 </span>
                 <span className="font-mono-data text-indicator-slashed">
-                  {proposal.votesAgainst.toLocaleString()} ETH
+                  {proposal.votes_against.toLocaleString()} ETH
                 </span>
               </div>
               <div className="h-2 bg-indicator-active/20 rounded-full overflow-hidden">
@@ -239,7 +275,7 @@ function AdminProposalDetailContent({ proposalId }: AdminProposalDetailContentPr
             <div className="pt-2 border-t border-hairline space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-foreground-muted">Created</span>
-                <span className="text-foreground">{formatDate(proposal.createdAt)}</span>
+                <span className="text-foreground">{formatDate(proposal.created_at)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-foreground-muted">Deadline</span>
@@ -301,7 +337,7 @@ function AdminProposalDetailContent({ proposalId }: AdminProposalDetailContentPr
               </div>
               <div className="flex justify-between">
                 <span className="text-foreground-muted">Transaction:</span>
-                <span className="text-indicator-active">{proposal.txHash}</span>
+                <span className="text-indicator-active">{proposal.tx_hash}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-foreground-muted">Target Contract:</span>

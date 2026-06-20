@@ -4,6 +4,8 @@ import * as React from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ExternalLink, Wallet, Cpu, TrendingUp, Clock, Shield } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { nodesApi } from "@/lib/supabase";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ReputationBadge } from "@/components/ui/ReputationBadge";
@@ -11,13 +13,68 @@ import { MetricCard } from "@/components/ui/MetricCard";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/page-header";
 
-const MOCK_NODE: Record<string, { address: string; gpu: string; vram: number; region: string; status: "online" | "stale" | "offline" | "slashed"; reputation: number; stake: string; uptime: string; jobsCompleted: number; jobsFailed: number; avgLatency: number; slashCount: number; slashTotal: string; registeredAt: string }> = {
-  "0x4A5e9F2c1D8b3A7e6f": { address: "0x4A5e9F2c1D8b3A7e6f", gpu: "NVIDIA H100 80GB", vram: 80, region: "us-east-1", status: "online", reputation: 142, stake: "2.5 ETH", uptime: "99.8%", jobsCompleted: 1247, jobsFailed: 3, avgLatency: 42, slashCount: 1, slashTotal: "0.025 ETH", registeredAt: "Jan 15, 2024" },
-};
-
 export default function NodeProfilePage() {
   const { address } = useParams();
-  const node = MOCK_NODE[address as string] ?? Object.values(MOCK_NODE)[0];
+
+  const { data: node, isLoading } = useQuery({
+    queryKey: ["nodes", address],
+    queryFn: () => nodesApi.getByWallet(address as string),
+    enabled: !!address,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-6 max-w-3xl mx-auto">
+        <PageHeader
+          title="Node Profile"
+          description={address as string}
+          breadcrumbs={[
+            { label: "Explore", href: "/explore" },
+            { label: "Nodes", href: "/explore/nodes" },
+            { label: address as string },
+          ]}
+        />
+        <Card className="bg-bg-surface/80">
+          <CardContent className="p-4">
+            <div className="text-foreground-muted text-sm">Loading...</div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!node) {
+    return (
+      <div className="flex flex-col gap-6 max-w-3xl mx-auto">
+        <PageHeader
+          title="Node Profile"
+          description={address as string}
+          breadcrumbs={[
+            { label: "Explore", href: "/explore" },
+            { label: "Nodes", href: "/explore/nodes" },
+            { label: address as string },
+          ]}
+        />
+        <Card className="bg-bg-surface/80">
+          <CardContent className="p-4">
+            <div className="text-foreground-muted text-sm">Node not found</div>
+          </CardContent>
+        </Card>
+        <div className="flex justify-start">
+          <Link href="/explore/nodes">
+            <Button variant="outline"><ArrowLeft className="h-4 w-4 mr-2" />Back to Registry</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const status = node.status as "online" | "stale" | "offline" | "slashed";
+  const registeredAt = new Date(node.created_at).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 
   return (
     <div className="flex flex-col gap-6 max-w-3xl mx-auto">
@@ -40,13 +97,15 @@ export default function NodeProfilePage() {
                 <Cpu className="h-6 w-6 text-indicator-active" />
               </div>
               <div>
-                <div className="font-mono text-foreground font-semibold">{node.address}</div>
-                <div className="text-sm text-foreground-muted">{node.gpu} · {node.region}</div>
+                <div className="font-mono text-foreground font-semibold">{node.wallet_address}</div>
+                <div className="text-sm text-foreground-muted">
+                  {node.gpu_model ?? "Unknown GPU"} · {node.location ?? "Unknown region"}
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <StatusBadge status={node.status} />
-              <ReputationBadge score={node.reputation} />
+              <StatusBadge status={status} />
+              <ReputationBadge score={node.reputation_score} />
             </div>
           </div>
         </CardContent>
@@ -54,10 +113,18 @@ export default function NodeProfilePage() {
 
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-4">
-        <MetricCard label="Stake" value={node.stake} glowColor="active" />
-        <MetricCard label="Reputation" value={String(node.reputation)} />
-        <MetricCard label="Jobs Completed" value={String(node.jobsCompleted)} trend="up" trendValue="+12%" />
-        <MetricCard label="Avg Latency" value={`${node.avgLatency}ms`} />
+        <MetricCard label="VRAM" value={`${node.vram_total_mb / 1024} GB`} />
+        <MetricCard label="Reputation" value={String(node.reputation_score)} />
+        <MetricCard
+          label="Jobs Completed"
+          value={String(node.total_jobs_completed)}
+          trend="up"
+          trendValue="+12%"
+        />
+        <MetricCard
+          label="Price"
+          value={`$${node.price_per_minute_usd.toFixed(4)}/min`}
+        />
       </div>
 
       {/* Performance */}
@@ -65,12 +132,11 @@ export default function NodeProfilePage() {
         <CardHeader><CardTitle>Performance (30d)</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           {[
-            { label: "Uptime", value: node.uptime },
-            { label: "Jobs Completed", value: String(node.jobsCompleted) },
-            { label: "Jobs Failed", value: String(node.jobsFailed) },
-            { label: "Avg Latency", value: `${node.avgLatency}ms` },
-            { label: "Slash Events", value: `${node.slashCount} (${node.slashTotal})` },
-            { label: "Registered", value: node.registeredAt },
+            { label: "GPU", value: node.gpu_model ?? "Unknown" },
+            { label: "VRAM Total", value: `${node.vram_total_mb / 1024} GB` },
+            { label: "Location", value: node.location ?? "Unknown" },
+            { label: "Jobs Completed", value: String(node.total_jobs_completed) },
+            { label: "Registered", value: registeredAt },
           ].map(({ label, value }) => (
             <div key={label} className="flex justify-between py-2 border-b border-hairline/50 last:border-0">
               <span className="text-foreground-muted text-sm">{label}</span>

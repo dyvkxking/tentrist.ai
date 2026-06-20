@@ -3,24 +3,26 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAccount, useBalance, useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { parseEther, formatEther } from "viem";
+import { supabase } from "@/lib/supabase";
+import { getCurrentUser } from "@/stores/auth-store";
 
 // Types
 export interface WalletTransaction {
   id: string;
+  user_id: string;
   type: "stake_added" | "stake_removed" | "job_payment" | "slashing" | "reward";
-  amount: number;
-  timestamp: number;
-  status: "confirmed" | "pending" | "failed";
-  hash: string;
-  description: string;
+  amount_usd: number;
+  job_id?: string;
+  tx_hash?: string;
+  created_at: string;
 }
 
 export interface EscrowPosition {
   id: string;
-  nodeId: string;
-  amount: number;
-  startDate: number;
-  status: "active" | "draining" | "released";
+  user_id: string;
+  node_id?: string;
+  amount_eth: number;
+  created_at: string;
 }
 
 export interface WalletStats {
@@ -31,92 +33,96 @@ export interface WalletStats {
   last30DaysSlashings: number;
 }
 
-// Mock data generators
-function generateMockTransactions(count: number = 20): WalletTransaction[] {
-  const types: WalletTransaction["type"][] = [
-    "stake_added",
-    "stake_removed",
-    "job_payment",
-    "slashing",
-    "reward",
-  ];
-  const descriptions: Record<WalletTransaction["type"], string> = {
-    stake_added: "Stake added to escrow",
-    stake_removed: "Stake released after cooldown",
-    job_payment: "Payment for job execution",
-    slashing: "SLA breach penalty",
-    reward: "Job completion reward",
-  };
-
-  return Array.from({ length: count }, (_, i) => {
-    const type = types[Math.floor(Math.random() * types.length)];
-    const amount =
-      type === "slashing"
-        ? -(Math.random() * 0.5 + 0.1)
-        : type === "job_payment" || type === "reward"
-        ? Math.random() * 0.3
-        : type === "stake_added"
-        ? Math.random() * 5 + 1
-        : Math.random() * 2 + 0.5;
-
-    return {
-      id: `tx_${i.toString().padStart(4, "0")}`,
-      type,
-      amount: parseFloat(amount.toFixed(4)),
-      timestamp: Date.now() - i * 3600000 * Math.random() * 12,
-      status: Math.random() > 0.1 ? "confirmed" : Math.random() > 0.5 ? "pending" : "failed",
-      hash: `0x${Math.random().toString(16).slice(2, 10)}...${Math.random().toString(16).slice(2, 6)}`,
-      description: descriptions[type],
-    };
-  });
+// API functions (Supabase)
+async function fetchWalletTransactions(userId: string): Promise<WalletTransaction[]> {
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data ?? [];
 }
 
-function generateMockEscrowPositions(): EscrowPosition[] {
-  return [
-    {
-      id: "escrow_001",
-      nodeId: "node_0042",
-      amount: 25.0,
-      startDate: Date.now() - 30 * 24 * 60 * 60 * 1000,
-      status: "active",
-    },
-    {
-      id: "escrow_002",
-      nodeId: "node_0087",
-      amount: 15.0,
-      startDate: Date.now() - 15 * 24 * 60 * 60 * 1000,
-      status: "active",
-    },
-  ];
+async function fetchEscrowPositions(userId: string): Promise<EscrowPosition[]> {
+  const { data, error } = await supabase
+    .from("escrow_positions")
+    .select("*")
+    .eq("user_id", userId);
+  if (error) throw error;
+  return data ?? [];
 }
 
-// API functions (mock)
-async function fetchWalletTransactions(): Promise<WalletTransaction[]> {
-  await new Promise((r) => setTimeout(r, 300));
-  return generateMockTransactions(20);
-}
+async function fetchWalletStats(userId: string): Promise<WalletStats> {
+  const txns = await fetchWalletTransactions(userId);
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-async function fetchEscrowPositions(): Promise<EscrowPosition[]> {
-  await new Promise((r) => setTimeout(r, 200));
-  return generateMockEscrowPositions();
-}
+  const recentTxns = txns.filter((t) => t.created_at >= thirtyDaysAgo);
+  const rewards = recentTxns
+    .filter((t) => t.type === "reward")
+    .reduce((sum, t) => sum + t.amount_usd, 0);
+  const slashings = recentTxns
+    .filter((t) => t.type === "slashing")
+    .reduce((sum, t) => sum + t.amount_usd, 0);
 
-async function fetchWalletStats(): Promise<WalletStats> {
-  await new Promise((r) => setTimeout(r, 200));
   return {
-    totalBalance: 12.5847,
-    totalStaked: 40.0,
+    totalBalance: txns
+      .filter((t) => t.type !== "slashing")
+      .reduce((sum, t) => sum + t.amount_usd, 0),
+    totalStaked: txns
+      .filter((t) => t.type === "stake_added")
+      .reduce((sum, t) => sum + t.amount_usd, 0),
     pendingUnstake: 0,
-    last30DaysRewards: 2.341,
-    last30DaysSlashings: 0.124,
+    last30DaysRewards: rewards,
+    last30DaysSlashings: slashings,
   };
+}
+
+async function stakeFunds(
+  userId: string,
+  amountEth: number
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch("/api/v1/escrow/stake", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, amountEth }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { success: false, error: data.error };
+    return { success: true };
+  } catch {
+    return { success: false, error: "Network error" };
+  }
+}
+
+async function unstakeFunds(
+  userId: string,
+  amountEth: number
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch("/api/v1/escrow/unstake", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, amountEth }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { success: false, error: data.error };
+    return { success: true };
+  } catch {
+    return { success: false, error: "Network error" };
+  }
 }
 
 // Hooks
 export function useWalletTransactions() {
   return useQuery({
     queryKey: ["wallet", "transactions"],
-    queryFn: fetchWalletTransactions,
+    queryFn: async () => {
+      const user = await getCurrentUser();
+      if (!user) return [];
+      return fetchWalletTransactions(user.id);
+    },
     refetchInterval: 30000,
     staleTime: 10000,
   });
@@ -125,7 +131,11 @@ export function useWalletTransactions() {
 export function useEscrowPositions() {
   return useQuery({
     queryKey: ["wallet", "escrow"],
-    queryFn: fetchEscrowPositions,
+    queryFn: async () => {
+      const user = await getCurrentUser();
+      if (!user) return [];
+      return fetchEscrowPositions(user.id);
+    },
     refetchInterval: 30000,
     staleTime: 10000,
   });
@@ -134,7 +144,18 @@ export function useEscrowPositions() {
 export function useWalletStats() {
   return useQuery({
     queryKey: ["wallet", "stats"],
-    queryFn: fetchWalletStats,
+    queryFn: async () => {
+      const user = await getCurrentUser();
+      if (!user)
+        return {
+          totalBalance: 0,
+          totalStaked: 0,
+          pendingUnstake: 0,
+          last30DaysRewards: 0,
+          last30DaysSlashings: 0,
+        };
+      return fetchWalletStats(user.id);
+    },
     refetchInterval: 30000,
     staleTime: 10000,
   });
@@ -146,9 +167,9 @@ export function useStake() {
 
   return useMutation({
     mutationFn: async ({ amount }: { amount: number }) => {
-      // Simulate transaction
-      await new Promise((r) => setTimeout(r, 2000));
-      return { success: true, amount };
+      const user = await getCurrentUser();
+      if (!user) return { success: false, error: "Not authenticated" };
+      return stakeFunds(user.id, amount);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["wallet"] });
@@ -162,9 +183,9 @@ export function useUnstake() {
 
   return useMutation({
     mutationFn: async ({ amount }: { amount: number }) => {
-      // Simulate transaction
-      await new Promise((r) => setTimeout(r, 2000));
-      return { success: true, amount };
+      const user = await getCurrentUser();
+      if (!user) return { success: false, error: "Not authenticated" };
+      return unstakeFunds(user.id, amount);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["wallet"] });

@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { useAuthStore, UserRole } from "@/stores/auth-store";
+import { useAuth } from "@/hooks/use-auth";
+import type { UserRole } from "@/stores/auth-store";
 import { ShieldAlert } from "lucide-react";
 
 interface RequireAuthOptions {
@@ -13,16 +14,17 @@ interface RequireAuthOptions {
 export function useRequireAuth(options: RequireAuthOptions = {}) {
   const { requiredRole, redirectTo = "/login" } = options;
   const router = useRouter();
-  const { user, isAuthenticated, isLoading } = useAuthStore();
+  const { user, isAuthenticated, isLoading } = useAuth();
 
   React.useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
+    if (isLoading) return;
+
+    if (!isAuthenticated) {
       router.push(redirectTo);
       return;
     }
 
-    if (!isLoading && isAuthenticated && requiredRole) {
-      // Check role hierarchy: admin > member > viewer
+    if (isAuthenticated && requiredRole) {
       const roleHierarchy: Record<UserRole, number> = {
         viewer: 0,
         member: 1,
@@ -42,7 +44,10 @@ export function useRequireAuth(options: RequireAuthOptions = {}) {
     user,
     isAuthenticated,
     isLoading,
-    hasAccess: !isLoading && isAuthenticated && (!requiredRole || user?.role === requiredRole || (user?.role === "admin")),
+    hasAccess:
+      !isLoading &&
+      isAuthenticated &&
+      (!requiredRole || user?.role === requiredRole || user?.role === "admin"),
   };
 }
 
@@ -56,7 +61,7 @@ export function RequireAuth({
   requiredRole?: UserRole;
   fallback?: React.ReactNode;
 }) {
-  const { isLoading, isAuthenticated, hasAccess } = useRequireAuth({ requiredRole });
+  const { isLoading, hasAccess } = useRequireAuth({ requiredRole });
 
   if (isLoading) {
     return (

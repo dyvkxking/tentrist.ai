@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { Bell, User, LogOut, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { AutoBreadcrumbs } from "@/components/shared/page-header";
+import { useAuth as useAuthContext } from "@/components/providers/supabase-auth-provider";
 
 export interface HeaderProps {
   className?: string;
@@ -25,6 +27,15 @@ export interface HeaderProps {
 }
 
 export function Header({ className, notificationCount = 0, user }: HeaderProps) {
+  const router = useRouter();
+  // Use Supabase context directly for reliable logout
+  const { signOut } = useAuthContext();
+
+  const handleLogout = async () => {
+    await signOut();
+    router.push("/");
+  };
+
   return (
     <header
       className={cn(
@@ -73,16 +84,15 @@ export function Header({ className, notificationCount = 0, user }: HeaderProps) 
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <User className="h-4 w-4 mr-2" />
-              Profile
-            </DropdownMenuItem>
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push("/settings")}>
               <Settings className="h-4 w-4 mr-2" />
               Settings
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-indicator-slashed">
+            <DropdownMenuItem
+              className="text-indicator-slashed cursor-pointer"
+              onClick={handleLogout}
+            >
               <LogOut className="h-4 w-4 mr-2" />
               Logout
             </DropdownMenuItem>

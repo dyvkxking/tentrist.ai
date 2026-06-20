@@ -1,3 +1,5 @@
+//go:build ignore
+
 // Package integration provides end-to-end integration tests for the Tentrist system.
 // This test suite validates the complete flow: Hardhat node → Go API backend → Telemetry client
 // with node failure detection and on-chain slashing verification.

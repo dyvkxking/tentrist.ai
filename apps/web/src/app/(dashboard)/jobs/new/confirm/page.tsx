@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/page-header";
-import { useAuthStore } from "@/stores/auth-store";
+import { useAuth } from "@/hooks/use-auth";
 
 type JobFormValues = {
   jobType: "llm" | "rendering" | "batch";
@@ -37,7 +37,7 @@ const JOB_TYPE_LABELS = {
 export default function JobConfirmPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const user = useAuthStore((s) => s.user);
+  const { user } = useAuth();
   const [step, setStep] = React.useState<"review" | "signing" | "submitting" | "done">("review");
   const [error, setError] = React.useState<string | null>(null);
   const [walletAddress, setWalletAddress] = React.useState<string | null>(null);

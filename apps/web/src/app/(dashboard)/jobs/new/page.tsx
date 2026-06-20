@@ -35,7 +35,7 @@ import {
   DialogBody,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { useAuthStore } from "@/stores/auth-store";
+import { getCurrentUser } from "@/stores/auth-store";
 import { jobsApi } from "@/lib/supabase";
 
 // Validation schema
@@ -234,7 +234,7 @@ export default function NewJobPage() {
 
   const onSubmit = async (data: JobFormData) => {
     setShowConfirmDialog(false);
-    const user = useAuthStore.getState().user;
+    const user = await getCurrentUser();
     if (!user) {
       router.push("/login");
       return;

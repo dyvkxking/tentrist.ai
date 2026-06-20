@@ -1,8 +1,8 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { jobsApi, type Job as SupabaseJob } from "@/lib/supabase";
-import { useAuthStore } from "@/stores/auth-store";
+import { jobsApi, supabase, type Job as SupabaseJob } from "@/lib/supabase";
+import { getCurrentUser } from "@/stores/auth-store";
 import * as React from "react";
 
 // Types
@@ -69,61 +69,9 @@ function mapJob(sbJob: SupabaseJob): Job {
   };
 }
 
-// Logs and node assignments still use mock data (not stored in Supabase)
-const mockLogs: Record<string, JobLog[]> = {};
-const mockNodeAssignments: Record<string, NodeAssignment[]> = {};
-
-function generateLogs(jobId: string, count: number = 50): JobLog[] {
-  const levels: JobLog["level"][] = ["info", "warn", "error", "debug"];
-  const messages = [
-    "Heartbeat received from node",
-    "Checkpoint saved successfully",
-    "Processing batch {i}/{total}",
-    "GPU memory allocation: {mem}GB",
-    "Network latency: {lat}ms",
-    "Work unit completed",
-    "Uptime verification passed",
-    "Throughput check: {throughput} ops/s",
-    "Node reconnection attempt {attempt}",
-    "Job progress update: {progress}%",
-  ];
-
-  return Array.from({ length: count }, (_, i) => {
-    const level = levels[Math.floor(Math.random() * levels.length)];
-    const message = messages[Math.floor(Math.random() * messages.length)]
-      .replace("{i}", String(Math.floor(Math.random() * 100)))
-      .replace("{total}", String(Math.floor(Math.random() * 100)))
-      .replace("{mem}", (Math.random() * 16).toFixed(1))
-      .replace("{lat}", String(Math.floor(Math.random() * 200)))
-      .replace("{throughput}", String(Math.floor(Math.random() * 500)))
-      .replace("{attempt}", String(Math.floor(Math.random() * 3) + 1))
-      .replace("{progress}", String(Math.floor(Math.random() * 100)));
-
-    return {
-      id: `log_${jobId}_${i}`,
-      timestamp: Date.now() - (count - i) * 1000 * Math.random() * 10,
-      level,
-      message,
-      nodeId: `node_${Math.floor(Math.random() * 5)}`,
-    };
-  });
-}
-
-function generateNodeAssignments(jobId: string): NodeAssignment[] {
-  return Array.from({ length: 3 }, (_, i) => ({
-    nodeId: `node_${i}`,
-    address: `0x${Math.random().toString(16).slice(2, 10)}...${Math.random().toString(16).slice(2, 6)}`,
-    status: (["assigned", "processing", "completed", "failed"] as NodeAssignment["status"][])[Math.floor(Math.random() * 4)],
-    progress: Math.floor(Math.random() * 100),
-    vramUsed: Math.floor(Math.random() * 16),
-    vramTotal: 16,
-    lastHeartbeat: Date.now() - Math.random() * 60000,
-  }));
-}
-
 // API functions (Supabase)
 async function fetchJobs(): Promise<Job[]> {
-  const user = useAuthStore.getState().user;
+  const user = await getCurrentUser();
   if (!user) return [];
 
   const sbJobs = await jobsApi.list(50);
@@ -140,19 +88,41 @@ async function fetchJob(id: string): Promise<Job | null> {
 }
 
 async function fetchJobLogs(jobId: string): Promise<JobLog[]> {
-  await new Promise((r) => setTimeout(r, 100));
-  if (!mockLogs[jobId]) {
-    mockLogs[jobId] = generateLogs(jobId, 100);
-  }
-  return mockLogs[jobId];
+  const { data, error } = await supabase
+    .from("job_logs")
+    .select("*")
+    .eq("job_id", jobId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((log: Record<string, unknown>) => ({
+    id: log.id as string,
+    timestamp: new Date(log.created_at as string).getTime(),
+    level: log.level as JobLog["level"],
+    message: log.message as string,
+    nodeId: log.node_id as string | undefined,
+  }));
 }
 
 async function fetchNodeAssignments(jobId: string): Promise<NodeAssignment[]> {
-  await new Promise((r) => setTimeout(r, 150));
-  if (!mockNodeAssignments[jobId]) {
-    mockNodeAssignments[jobId] = generateNodeAssignments(jobId);
-  }
-  return mockNodeAssignments[jobId];
+  const { data, error } = await supabase
+    .from("node_assignments")
+    .select("*, nodes(wallet_address)")
+    .eq("job_id", jobId);
+  if (error) throw error;
+  return (data ?? []).map((assignment: Record<string, unknown>) => {
+    const node = assignment.nodes as Record<string, unknown> | null;
+    return {
+      nodeId: assignment.node_id as string,
+      address: node?.wallet_address as string ?? "",
+      status: assignment.status as NodeAssignment["status"],
+      progress: assignment.progress as number,
+      vramUsed: assignment.vram_used as number,
+      vramTotal: assignment.vram_total as number,
+      lastHeartbeat: assignment.last_heartbeat_at
+        ? new Date(assignment.last_heartbeat_at as string).getTime()
+        : Date.now(),
+    };
+  });
 }
 
 // Hooks
@@ -195,7 +165,7 @@ export function useNodeAssignments(jobId: string) {
   });
 }
 
-// Streaming log hook (simulated SSE-like behavior)
+// Streaming log hook using Supabase Realtime
 export function useStreamingLogs(jobId: string, enabled: boolean = true) {
   const [logs, setLogs] = React.useState<JobLog[]>([]);
   const [isConnected, setIsConnected] = React.useState(false);
@@ -203,24 +173,34 @@ export function useStreamingLogs(jobId: string, enabled: boolean = true) {
   React.useEffect(() => {
     if (!enabled || !jobId) return;
 
+    // Initial fetch
+    fetchJobLogs(jobId).then(setLogs).catch(console.error);
     setIsConnected(true);
 
-    // Initial fetch
-    fetchJobLogs(jobId).then(setLogs);
-
-    // Simulate streaming with interval
-    const interval = setInterval(async () => {
-      const newLogs = await fetchJobLogs(jobId);
-      setLogs((prev) => {
-        // Append only new logs
-        const existingIds = new Set(prev.map((l) => l.id));
-        const fresh = newLogs.filter((l) => !existingIds.has(l.id));
-        return [...prev, ...fresh].slice(-500); // Keep last 500
-      });
-    }, 2000);
+    // Subscribe to realtime changes
+    const channel = supabase
+      .channel(`job-logs-${jobId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "job_logs", filter: `job_id=eq.${jobId}` },
+        (payload) => {
+          const newLog = payload.new as Record<string, unknown>;
+          setLogs((prev) => [
+            ...prev,
+            {
+              id: newLog.id as string,
+              timestamp: new Date(newLog.created_at as string).getTime(),
+              level: newLog.level as JobLog["level"],
+              message: newLog.message as string,
+              nodeId: newLog.node_id as string | undefined,
+            },
+          ]);
+        }
+      )
+      .subscribe();
 
     return () => {
-      clearInterval(interval);
+      supabase.removeChannel(channel);
       setIsConnected(false);
     };
   }, [jobId, enabled]);

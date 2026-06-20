@@ -2,6 +2,12 @@
 
 import * as React from "react";
 import { Suspense } from "react";
+
+class ErrorBoundary extends React.Component<{children:React.ReactNode;fallback:React.ReactNode},{hasError:boolean}> {
+  constructor(props:any){super(props);this.state={hasError:false}}
+  static getDerivedStateFromError(){return{hasError:true}}
+  render(){if(this.state.hasError)return this.props.fallback;return this.props.children}
+}
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -31,6 +37,7 @@ function LoginForm() {
   const { login, loginWithWallet, isAuthenticated, isLoading, error, clearError } = useAuth();
   const [showPassword, setShowPassword] = React.useState(false);
   const [oauthLoading, setOauthLoading] = React.useState<string | null>(null);
+  const [walletConnecting, setWalletConnecting] = React.useState(false);
 
   const {
     register,
@@ -61,8 +68,21 @@ function LoginForm() {
   };
 
   const handleWalletLogin = async () => {
-    const mockAddress = "0x742d35Cc6634C0532925a3b844Bc9e7595f8dE81";
-    await loginWithWallet(mockAddress);
+    if (!window.ethereum) {
+      alert("No wallet detected. Please install MetaMask or another Web3 wallet.");
+      return;
+    }
+    setWalletConnecting(true);
+    try {
+      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" }) as string[];
+      if (accounts.length > 0) {
+        await loginWithWallet(accounts[0]);
+      }
+    } catch (err) {
+      console.error("Wallet connection failed:", err);
+    } finally {
+      setWalletConnecting(false);
+    }
   };
 
   const handleOAuthSignIn = async (provider: 'github' | 'google' | 'discord') => {
@@ -82,9 +102,6 @@ function LoginForm() {
     }
   };
 
-  const handleDemoLogin = async () => {
-    await login("alex@tentrist.ai", "demo123");
-  };
 
   return (
     <>
@@ -263,21 +280,14 @@ function LoginForm() {
         variant="outline"
         className="w-full"
         onClick={handleWalletLogin}
-        disabled={isLoading}
+        disabled={isLoading || walletConnecting}
       >
-        <Wallet className="mr-2 h-4 w-4" />
-        Connect Wallet
-      </Button>
-
-      {/* Demo mode */}
-      <Button
-        type="button"
-        variant="ghost"
-        className="w-full text-foreground-muted hover:text-foreground"
-        onClick={handleDemoLogin}
-        disabled={isLoading}
-      >
-        Demo Mode (alex@tentrist.ai)
+        {walletConnecting ? (
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        ) : (
+          <Wallet className="mr-2 h-4 w-4" />
+        )}
+        {walletConnecting ? "Connecting..." : "Connect Wallet"}
       </Button>
     </>
   );
@@ -328,9 +338,11 @@ export default function LoginPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 pt-4">
-              <Suspense fallback={<LoginFormSkeleton />}>
-                <LoginForm />
-              </Suspense>
+              <ErrorBoundary fallback={<LoginFormSkeleton />}>
+                <Suspense fallback={<LoginFormSkeleton />}>
+                  <LoginForm />
+                </Suspense>
+              </ErrorBoundary>
             </CardContent>
           </Card>
 

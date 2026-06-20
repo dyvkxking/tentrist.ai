@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/page-header";
-import { useAuthStore } from "@/stores/auth-store";
 
 export default function WalletSettingsPage() {
   const [copied, setCopied] = React.useState(false);

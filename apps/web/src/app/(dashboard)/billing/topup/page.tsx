@@ -7,12 +7,12 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/page-header";
-import { useAuthStore } from "@/stores/auth-store";
+import { useAuth } from "@/hooks/use-auth";
 
 const AMOUNTS = [0.1, 0.25, 0.5, 1.0, 2.5, 5.0];
 
 export default function TopupPage() {
-  const user = useAuthStore((s) => s.user);
+  const { user } = useAuth();
   const [amount, setAmount] = React.useState<number | null>(null);
   const [custom, setCustom] = React.useState("");
   const [step, setStep] = React.useState<"select" | "signing" | "done">("select");

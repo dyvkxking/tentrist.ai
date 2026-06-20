@@ -4,64 +4,32 @@
    TENTRIST DESIGN SYSTEM — Hybrid Linear Infrastructure Aesthetic
    ======================================== */
 
+/* Design token CSS variables — used by components via var() */
 :root {
-  /* Background Layers */
   --bg-base: #010102;
   --bg-surface: #0f1011;
-
-  /* Foreground / Text */
   --foreground: #ededed;
   --foreground-muted: #71717a;
-
-  /* Borders */
   --border-hairline: #27272a;
-
-  /* Telemetry Indicators */
   --indicator-active: #10b981;
   --indicator-stale: #f59e0b;
   --indicator-slashed: #f43f5e;
-
-  /* Semantic Colors */
   --success: #10b981;
   --warning: #f59e0b;
   --danger: #f43f5e;
-
-  /* Fonts */
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@theme inline {
-  /* Background Layers */
-  --color-bg-base: var(--bg-base);
-  --color-bg-surface: var(--bg-surface);
-
-  /* Foreground */
-  --color-foreground: var(--foreground);
-  --color-foreground-muted: var(--foreground-muted);
-
-  /* Borders */
-  --color-border-hairline: var(--border-hairline);
-
-  /* Telemetry Indicators */
-  --color-indicator-active: var(--indicator-active);
-  --color-indicator-stale: var(--indicator-stale);
-  --color-indicator-slashed: var(--indicator-slashed);
-
-  /* Semantic */
-  --color-success: var(--success);
-  --color-warning: var(--warning);
-  --color-danger: var(--danger);
-
-  /* Typography */
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);
+/* Force dark color scheme on html element */
+html {
+  color-scheme: dark;
 }
 
-/* Base Styles */
+/* Base Styles — hardcoded values ensure no Tailwind override */
 body {
-  background: var(--bg-base);
-  color: var(--foreground);
+  background-color: #010102 !important;
+  color: #ededed !important;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
