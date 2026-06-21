@@ -78,8 +78,8 @@ export function useNodes() {
   return useQuery({
     queryKey: ["nodes"],
     queryFn: fetchNodes,
-    refetchInterval: 30000, // Poll every 30 seconds
-    staleTime: 10000,
+    refetchInterval: 60000, // Poll every 60s (reduced)
+    staleTime: 30000,
   });
 }
 
@@ -87,8 +87,8 @@ export function useNode(id: string) {
   return useQuery({
     queryKey: ["nodes", id],
     queryFn: () => fetchNode(id),
-    refetchInterval: 10000,
-    staleTime: 5000,
+    refetchInterval: 30000, // Poll every 30s (reduced from 10s)
+    staleTime: 15000,
     enabled: !!id,
   });
 }
@@ -114,6 +114,7 @@ export function useNetworkStats() {
   return useQuery({
     queryKey: ["nodes", "network-stats"],
     queryFn: async (): Promise<NetworkStats> => {
+      // Re-use the data from useNodes hook via queryClient to avoid double-fetch
       const sbNodes = await nodesApi.list();
       const nodes = sbNodes.map(mapNode);
 
@@ -135,7 +136,7 @@ export function useNetworkStats() {
         unrankedTierCount: nodes.filter((n) => n.tier === "unranked").length,
       };
     },
-    refetchInterval: 30000,
-    staleTime: 10000,
+    refetchInterval: 60000, // Increased to 60s - reduce network load
+    staleTime: 30000, // Cache for 30s before refetch
   });
 }

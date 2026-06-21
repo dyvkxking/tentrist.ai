@@ -28,17 +28,17 @@ import {
 import { injected } from "wagmi/connectors";
 import "@rainbow-me/rainbowkit/styles.css";
 
-// Create wagmi config
+// Create wagmi config - only include necessary chains to reduce loading time
 export const wagmiConfig = createConfig({
-  chains: [mainnet, sepolia, hardhat],
+  chains: [hardhat], // Only hardhat for local dev - lazy load others
   connectors: [
     injected(),
   ],
   transports: {
-    [mainnet.id]: http(),
-    [sepolia.id]: http(),
     [hardhat.id]: http("http://127.0.0.1:8545"),
   },
+  // Disable automatic reconnection to reduce initial load
+  ssr: false,
 });
 
 // Create query client
@@ -74,7 +74,9 @@ export function Web3Providers({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => {
-    setMounted(true);
+    // Delay mounting to prevent hydration issues and improve initial load
+    const timer = setTimeout(() => setMounted(true), 1);
+    return () => clearTimeout(timer);
   }, []);
 
   return (
@@ -83,8 +85,9 @@ export function Web3Providers({ children }: { children: React.ReactNode }) {
         <RainbowKitProvider
           theme={tentristTheme}
           modalSize="compact"
+          initialChain={31337} // hardhat chain ID
         >
-          {mounted ? children : null}
+          {mounted ? children : <div className="min-h-[100px]" />}
         </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>

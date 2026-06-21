@@ -130,8 +130,8 @@ export function useJobs() {
   return useQuery({
     queryKey: ["jobs"],
     queryFn: fetchJobs,
-    refetchInterval: 30000, // Poll every 30 seconds
-    staleTime: 10000,
+    refetchInterval: 60000, // Poll every 60 seconds (reduced from 30s)
+    staleTime: 30000, // Cache for 30s
   });
 }
 
@@ -139,8 +139,8 @@ export function useJob(id: string) {
   return useQuery({
     queryKey: ["jobs", id],
     queryFn: () => fetchJob(id),
-    refetchInterval: 5000, // Poll every 5 seconds for detail view
-    staleTime: 2000,
+    refetchInterval: 15000, // Poll every 15s for detail view (reduced from 5s)
+    staleTime: 5000,
     enabled: !!id,
   });
 }
@@ -149,8 +149,8 @@ export function useJobLogs(jobId: string) {
   return useQuery({
     queryKey: ["jobs", jobId, "logs"],
     queryFn: () => fetchJobLogs(jobId),
-    refetchInterval: 2000, // Poll every 2 seconds for logs
-    staleTime: 1000,
+    refetchInterval: 10000, // Poll every 10s for logs (reduced from 2s)
+    staleTime: 5000,
     enabled: !!jobId,
   });
 }
@@ -159,8 +159,8 @@ export function useNodeAssignments(jobId: string) {
   return useQuery({
     queryKey: ["jobs", jobId, "assignments"],
     queryFn: () => fetchNodeAssignments(jobId),
-    refetchInterval: 10000, // Poll every 10 seconds
-    staleTime: 5000,
+    refetchInterval: 30000, // Poll every 30s (reduced from 10s)
+    staleTime: 15000,
     enabled: !!jobId,
   });
 }

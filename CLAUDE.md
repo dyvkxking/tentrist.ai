@@ -1,22 +1,30 @@
-# Project: Tentrist — Decentralized SLA-Enforced GPU Orchestration Protocol
+# Tentrist — DePIN GPU Orchestration Protocol
 
-## Overview
+## What This Project Is
 
-Tentrist is a B2B SaaS middleware and orchestration layer that sits on top of decentralized computing hardware networks (DePIN). It bridges the reliability gap between AI SaaS companies and decentralized GPU pools by utilizing blockchain smart contracts for trustless node staking, real-time performance monitoring, automated cryptographic slashing, and instantaneous job re-routing.
+Tentrist is a **B2B SaaS middleware** and **orchestration layer** sitting on top of decentralized computing hardware networks (DePIN). It bridges the reliability gap between AI SaaS companies and decentralized GPU pools by using blockchain smart contracts for:
 
-**Core Value Proposition:** B2B clients access decentralized GPU markets at rates up to 70% cheaper than legacy cloud providers, with enterprise-grade SLAs enforced automatically on-chain.
+- **Trustless node staking** — Nodes stake collateral as a performance bond
+- **Real-time performance monitoring** — 30-second heartbeat intervals
+- **Automated cryptographic slashing** — Penalties executed by smart contracts, not humans
+- **Instantaneous job re-routing** — Failed nodes don't block workloads
+
+**Core value prop:** B2B clients access decentralized GPU markets at rates up to **70% cheaper** than legacy cloud, with enterprise-grade SLAs enforced automatically on-chain. No manual refunds.
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| **Frontend** | Next.js |
-| **Telemetry / Heartbeat Monitor** | Go or Rust |
-| **Smart Contracts** | Solidity (EVM) |
-| **API Layer** | Go/Rust backend services |
-| **Blockchain** | EVM-compatible chain (for smart contract execution) |
+| Layer | Technology | Location |
+|-------|-----------|----------|
+| **Frontend** | Next.js 16 (App Router, Turbopack) | `apps/web/` |
+| **Styling** | Tailwind CSS + custom design tokens | `apps/web/tailwind.config.ts` |
+| **Auth** | Supabase Auth (`@supabase/ssr`) | `apps/web/src/components/providers/` |
+| **Database** | Supabase (PostgreSQL) | via `lib/supabase.ts` |
+| **Web3** | Wagmi v2 + RainbowKit + viem | `apps/web/src/components/providers/web3-providers.tsx` |
+| **State** | TanStack Query v5 (React Query) | `apps/web/src/hooks/` |
+| **Backend** | Go + pgxpool | `backend/` |
+| **Smart Contracts** | Solidity (Hardhat) | `contracts/` |
 
 ---
 
@@ -30,166 +38,252 @@ Tentrist is a B2B SaaS middleware and orchestration layer that sits on top of de
                           │ HTTPS/REST
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                     Next.js Frontend                             │
-│        (dashboard, job monitoring, node management)              │
+│                 Next.js Frontend (Port 3000)                    │
+│    (dashboard, job monitoring, node management, billing)         │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
-                          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    API Gateway / Go Backend                       │
-│         (job ingestion, workload orchestration, routing)          │
-└───────────┬─────────────────────────────────────┬───────────────┘
-            │                                     │
-            ▼                                     ▼
-┌───────────────────────┐           ┌─────────────────────────────┐
-│  Smart Contract Layer │           │   Heartbeat Telemetry (Go/Rust)
-│  - Escrow/Staking     │           │   - 30-second pulse         │
-│  - SLA Benchmarks     │           │   - VRAM utilization       │
-│  - Slash & Reward     │           │   - Packet response times  │
-│  - Reputation Scores  │           │   - Failure detection      │
-└───────────────────────┘           └─────────────────────────────┘
-            │                                     │
-            └──────────────┬──────────────────────┘
-                           │
-                           ▼
-            ┌─────────────────────────────────────┐
-            │      Decentralized GPU Nodes        │
-            │   (staked collateral, DePIN network)│
-            └─────────────────────────────────────┘
+         ┌────────────────┴────────────────┐
+         │                                 │
+         ▼                                 ▼
+┌─────────────────────────┐   ┌─────────────────────────────────┐
+│  Supabase PostgreSQL    │   │    Go Backend API (Port 8080)   │
+│  (reads + realtime)     │   │  (writes: jobs, nodes, wallet)  │
+└─────────────────────────┘   └──────────────┬──────────────────┘
+                                             │
+                          ┌──────────────────┴──────────────────┐
+                          ▼                                     ▼
+          ┌───────────────────────────┐      ┌─────────────────────────────┐
+          │  Smart Contract Layer      │      │  Heartbeat Telemetry (Go)   │
+          │  Escrow / SLA / Slash      │      │  30s pulse, VRAM, latency   │
+          └───────────────────────────┘      └─────────────────────────────┘
+                          │                                     │
+                          └──────────────────┬──────────────────┘
+                                             │
+                          ┌──────────────────▼──────────────────┐
+                          │      Decentralized GPU Nodes          │
+                          │   (staked collateral, DePIN network) │
+                          └──────────────────────────────────────┘
 ```
 
 ---
 
-## Key Concepts
-
-### Node Staking & Escrow
-- Compute nodes stake crypto/stablecoins as collateral into the platform's escrow smart contract
-- Staked collateral makes nodes eligible for workload processing
-- Slashing penalties are deducted from staked collateral on failure
-
-### Job Ingestion & SLA Recording
-- Client submits compute tasks (LLM fine-tuning, batch image rendering, etc.) via API
-- Upon ingestion, the API records SLA benchmarks on-chain:
-  - Required uptime
-  - Computational throughput
-  - Deadlines
-
-### Workload Splitting
-- Middleware splits workloads across eligible, staked nodes
-- Checkpointing enables job migration if a node fails
-
-### Heartbeat Telemetry (30-second intervals)
-- Low-latency monitoring service
-- Tracks: VRAM utilization, packet response times, node health
-- Flags failures to smart contract immediately on detection
-
-### On-Chain Slashing & Rewards
-- **Success:** Telemetry signs off → smart contract transfers payment to node → reputation score incremented
-- **Failure:** Network blackout or dropped frames → heartbeat flags failure → smart contract executes slashing → job re-routed to standby node → slashed funds credited to customer's SaaS balance
-
-### Financial SLA Guarantee
-- 100% financial guarantee of performance via immutable on-chain enforcement
-- No manual customer support refunds — discounts applied instantly on-chain
-
----
-
-## Directory Structure (Planned)
+## Directory Structure
 
 ```
 tentrist.ai/
-├── contracts/                    # Solidity smart contracts
-│   ├── Escrow.sol               # Staking escrow contract
-│   ├── SLAContract.sol          # SLA benchmark & tracking
-│   ├── SlashManager.sol         # Penalty execution
-│   └── ReputationLedger.sol     # Node reputation scores
+├── apps/
+│   └── web/                    # Next.js 16 frontend
+│       ├── src/
+│       │   ├── app/
+│       │   │   ├── (auth)/     # Login, signup, auth callback
+│       │   │   ├── (dashboard)/# Authenticated routes (jobs, nodes, billing...)
+│       │   │   ├── (marketing)/# Public routes (landing, features, pricing, docs, explore)
+│       │   │   ├── api/        # Next.js API routes (rarely used)
+│       │   │   ├── layout.tsx   # Root layout + Providers
+│       │   │   └── sitemap.ts  # SEO sitemap
+│       │   ├── components/
+│       │   │   ├── layout/     # Sidebar, MobileNav, DashboardLayout
+│       │   │   ├── providers/  # SupabaseAuth, Web3, Theme
+│       │   │   ├── shared/     # PageHeader, LiveIndicator
+│       │   │   └── ui/        # MetricCard, StatusBadge, Card, Button, Badge...
+│       │   ├── hooks/          # useJobs, useNodes, useBilling, useWallet...
+│       │   ├── lib/            # supabase.ts, contracts.ts, utils.ts, middleware.ts
+│       │   └── stores/         # auth-store.ts (getCurrentUser)
+│       ├── e2e-tests.spec.ts   # Playwright E2E (20 tests, all passing)
+│       └── next.config.ts
 │
-├── frontend/                     # Next.js application
-│   ├── app/                     # Next.js App Router
-│   ├── components/              # React components
-│   ├── pages/                   # Pages (if using Pages Router)
-│   └── lib/                     # Utilities, API clients
+├── backend/                     # Go REST API server (port 8080)
+│   ├── cmd/server/main.go       # Entry point, router setup
+│   ├── internal/api/handlers/  # HTTP handlers (job.go, node.go, wallet.go...)
+│   ├── internal/api/middleware/ # Auth, CORS, logging
+│   ├── internal/types/         # Go type definitions
+│   └── pkg/                    # Shared packages
 │
-├── telemetry/                    # Go/Rust heartbeat monitor
-│   ├── heartbeat/               # Main telemetry service
-│   ├── metrics/                 # VRAM, latency collectors
-│   └── detector/                # Failure detection logic
+├── contracts/                   # Solidity smart contracts
+│   ├── contracts/              # .sol source files
+│   ├── scripts/                # Hardhat deployment scripts
+│   └── test/                   # Contract tests
 │
-├── backend/                      # Go/Rust API services
-│   ├── api/                     # REST API handlers
-│   ├── orchestrator/            # Workload splitting & routing
-│   └── checkpoint/              # Job checkpoint management
+├── supabase/
+│   └── migrations/             # 001-003 SQL migration files
 │
-├── docs/                         # Documentation
-│   └── V1_CHECKLIST.md          # Development checklist
-│
-├── CLAUDE.md                    # This file
-└── README.md
+└── docs/                       # Documentation
 ```
 
 ---
 
-## Workflows
+## Key Abstractions
 
-### 1. Node Onboarding
-1. Node operator stakes collateral into Escrow smart contract
-2. Node registers with platform and becomes eligible for workloads
-3. Reputation score initialized at 0
+### Data Flow
 
-### 2. Job Submission
-1. AI SaaS client submits compute task via API
-2. API records SLA benchmarks (uptime, throughput, deadline) on smart contract
-3. Orchestrator splits workload across eligible nodes
-4. Nodes begin processing
+**Rule: All database writes go through the Go backend API (`POST /api/v1/...`). All reads go through Supabase directly via typed hooks.**
 
-### 3. Successful Job Completion
-1. Heartbeat telemetry monitors node every 30 seconds
-2. Node completes task successfully
-3. Telemetry service signs off on execution validity
-4. Smart contract transfers payment to node address
-5. Node's reputation score incremented
+```
+Supabase (PostgreSQL + Auth + Realtime)
+         ↓ (reads only)
+  lib/supabase.ts → hooks/ → components
 
-### 4. Node Failure & Recovery
-1. Node experiences blackout or drops frames
-2. Heartbeat telemetry detects failure, flags smart contract immediately
-3. Orchestrator shifts last saved checkpoint to healthy standby node
-4. Smart contract executes on-chain slashing (confiscates % of node's collateral)
-5. Major portion of slashed funds credited to customer's SaaS balance
-6. Failed node reputation score decreased
+Go Backend API (localhost:8080)
+         ↓ (writes)
+  Next.js API calls (use mutations)
+```
 
----
+### Hooks Architecture
 
-## Global Preferences
+| Hook | Data Source | Purpose |
+|------|-------------|---------|
+| `useJobs()` | Supabase `jobs` table | List all jobs |
+| `useJob(id)` | Supabase `jobs` table | Single job detail |
+| `useStreamingLogs(jobId)` | Supabase Realtime `postgres_changes` | Live job logs |
+| `useNodes()` | Supabase `nodes` table | List GPU nodes |
+| `useNetworkStats()` | Supabase aggregate queries | Network-wide stats |
+| `useWalletTransactions()` | Supabase `transactions` table | Billing tx history |
+| `useEscrowPositions()` | Supabase `escrow_positions` table | Active stakes |
+| `useBillingSummary()` | Derived from wallet hooks | Balance overview |
+| `useInvoices()` | Supabase `invoices` table | Billing invoices |
+| `useSLACredits()` | Supabase `sla_credits` table | SLA breach credits |
+| `useWalletStats()` | Derived | Wallet balance, staked, rewards |
 
-### Architecture Decisions
-- **Always** use on-chain verification for financial transactions (payments, slashing)
-- **Always** implement checkpointing for long-running compute jobs
-- **Always** design for 30-second heartbeat intervals as the minimum monitoring frequency
+### Database Tables
 
-### Code Standards
-- Smart contracts must follow Solidity best practices (effects-interactions pattern, reentrancy guards)
-- Go/Rust telemetry must be low-latency and fault-tolerant
-- Frontend must support real-time job status updates via WebSocket or SSE
+| Table | Purpose |
+|-------|---------|
+| `profiles` | User profile (id, email, display_name, wallet_address) |
+| `jobs` | Job records (status, sla benchmarks, pricing, node assignments) |
+| `nodes` | GPU node registry (status, GPU model, VRAM, reputation score) |
+| `api_keys` | User API keys (name, key_hash, key_prefix) |
+| `transactions` | All financial events (job_payment, slashing, reward, stake_added...) |
+| `escrow_positions` | Active staking positions (amount_eth, node_id) |
+| `sla_credits` | SLA breach credit events (job_id, breach_type, credit_amount) |
+| `invoices` | Monthly billing invoices |
+| `node_heartbeats` | Node health pings (vram_used, packet_latency_ms) |
+| `job_logs` | Job lifecycle events (level: info/warn/error) |
+| `node_assignments` | Which node is running which job |
 
-### Key Files to Create
-- [ ] `contracts/Escrow.sol` — staking collateral management
-- [ ] `contracts/SLAContract.sol` — SLA benchmark recording
-- [ ] `contracts/SlashManager.sol` — automated penalty execution
-- [ ] `contracts/ReputationLedger.sol` — node reputation tracking
-- [ ] `telemetry/heartbeat/main.go` — main telemetry service
-- [ ] `telemetry/detector/failure.go` — failure detection logic
-- [ ] `backend/orchestrator/splitter.go` — workload splitting
-- [ ] `frontend/app/dashboard/` — job monitoring UI
+### Smart Contracts (in `lib/contracts.ts`)
 
----
-
-## V1 Checklist
-
-When features are completed, check them off in `@docs/V1_CHECKLIST.md`.
+| Contract | Purpose |
+|----------|---------|
+| `Escrow.sol` | Stake/unstake collateral, pay/receive funds |
+| `SLAContract.sol` | Record SLA benchmarks per job |
+| `SlashManager.sol` | Execute slashing on breach, distribute to customer |
 
 ---
 
-## References
+## Design System
 
-- Product Spec: See top of this file
-- Smart Contract Security: Follow Solidity security best practices (OpenZeppelin patterns)
-- DePIN Networks: Understand staking economic models before designing collateral requirements
+Defined in `.claude/rules/frontend-design.md` — **read this before modifying UI components**.
+
+### Color Tokens (Tailwind)
+```
+bg-base           → #010102  (pitch black background)
+bg-surface        → #0f1011  (card/panel background)
+border-hairline   → #27272a  (subtle 1px borders)
+indicator-active  → emerald-500 (online, success, active)
+indicator-stale   → amber-500   (warning, stale, pending)
+indicator-slashed → rose-500    (error, slashed, failed)
+```
+
+### Typography
+- **UI titles/labels:** Geist Sans (CSS variable `--font-geist-sans`)
+- **Data/numbers/addresses:** Geist Mono (CSS variable `--font-geist-mono`)
+
+### Required Components (must use, not copy-paste primitives)
+- `MetricCard` — Standardized container for metrics with glow effects
+- `StatusBadge` — Enum map for serverless states (pending/running/completed/failed)
+- `TelemetryTable` — Multi-tenant list (addresses left, numbers center, prices right)
+- `LiveIndicator` — Pulsing dot for real-time status
+
+---
+
+## Environment Variables
+
+### `apps/web/.env.local` (required)
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY=eyJ...   # Server-side only
+NEXT_PUBLIC_API_URL=http://localhost:8080       # Go backend
+NEXT_PUBLIC_SITE_URL=https://tentrist.ai
+NEXT_PUBLIC_CHAIN_ID=31337                      # Hardhat local dev
+```
+
+### `backend/.env` (required)
+```bash
+DATABASE_URL=postgres://user:pass@localhost:5432/tentrist
+ESCROW_CONTRACT_ADDRESS=0x...
+PORT=8080
+CORS_ORIGIN=http://localhost:3000
+SUPABASE_JWT_SECRET=eyJ...
+```
+
+---
+
+## Running Locally
+
+### 1. Frontend (Next.js)
+```bash
+cd apps/web
+npm install
+npm run dev        # Port 3000
+npm run build     # Production build (must pass before commit)
+```
+
+### 2. Backend (Go)
+```bash
+cd backend
+go build -o server.exe ./cmd/server
+./server.exe      # Port 8080
+```
+
+### 3. Supabase CLI (local database)
+```bash
+cd supabase
+npx supabase start     # Starts local Supabase on port 54322
+npx supabase db reset # Reset + apply migrations
+```
+
+### 4. Run E2E Tests
+```bash
+cd apps/web
+npx playwright test e2e-tests.spec.ts --reporter=list
+# 20 tests — all must pass
+```
+
+---
+
+## Code Conventions
+
+1. **No `console.log`** — Use `useToast()` for UI feedback
+2. **Wallet addresses are lowercase hex** — Always `address.toLowerCase()` before Supabase queries
+3. **React Query is the only server state manager** — No Redux or Zustand for server data
+4. **Providers wrap everything** — `SupabaseAuthProvider` + `Web3Providers` in root `layout.tsx`
+5. **Marketing pages use route group `(marketing)`** — Shares layout, public
+6. **Dashboard pages use route group `(dashboard)`** — Auth-gated, has sidebar
+7. **Monetary values:** USD stored as `number`, ETH stored as `string` with wei precision
+8. **Build must pass** — Run `npm run build` in `apps/web` before every commit
+
+---
+
+## Architecture Decisions
+
+- **Supabase Realtime** replaces SSE for live job logs — uses `postgres_changes` subscription on `job_logs` table
+- **Go backend is primary for writes** — Supabase for reads only (R+W split)
+- **Escrow contract reads via wagmi** — `useReadContract` on dashboard for real-time stake balance
+- **Hardhat chain only in local dev** — wagmi config uses `hardhat` chain with `http://127.0.0.1:8545`
+- **Go backend uses in-memory maps** — Data survives restarts via PostgreSQL dual-write (best-effort)
+- **Always use `useJobs`, `useNodes`, etc.** — Don't call `jobsApi.list()` directly in components
+
+---
+
+## Important File Reference
+
+| File | Purpose |
+|------|---------|
+| `apps/web/src/lib/supabase.ts` | Typed API wrappers (jobsApi, nodesApi, profileApi, prefsApi) |
+| `apps/web/src/lib/contracts.ts` | Escrow ABI + Hardhat contract addresses |
+| `apps/web/src/lib/middleware.ts` | Security headers (X-Frame-Options, CSP, etc.) |
+| `apps/web/src/stores/auth-store.ts` | `getCurrentUser()` helper for React Query |
+| `apps/web/src/components/providers/web3-providers.tsx` | Wagmi config, RainbowKit theme |
+| `apps/web/src/components/layout/sidebar.tsx` | Dashboard sidebar with Billing, Explore, Admin sub-nav |
+| `apps/web/e2e-tests.spec.ts` | 20 Playwright tests covering all major flows |

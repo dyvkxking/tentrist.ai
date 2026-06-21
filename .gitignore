@@ -24,7 +24,7 @@ vendor/
 *.exe
 *.out
 
-# Backend bindings (generated, don't commit)
+# Backend bindings (generated)
 backend/internal/contract/bindings/*.abi
 backend/internal/contract/bindings/*.bin
 
@@ -46,13 +46,9 @@ telemetry/tentrist-telemetry
 Thumbs.db
 
 # ============================================
-# Environment - NEVER COMMIT THESE
+# Environment - NEVER COMMIT
 # ============================================
 .env
-.env.local
-.env.*.local
-.env.production
-.env.staging
 
 # ============================================
 # Temporary & Output

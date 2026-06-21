@@ -54,21 +54,13 @@ export default function MarketingLayout({
           {/* Desktop CTA — show Dashboard if logged in */}
           <div className="hidden md:flex items-center gap-3">
             {isLoggedIn ? (
-              <>
-                <Link
-                  href="/dashboard"
-                  className="inline-flex items-center justify-center h-9 px-4 text-sm font-medium rounded-md text-foreground-muted hover:text-foreground hover:bg-zinc-800/50 transition-colors"
-                >
-                  Go to Dashboard
-                </Link>
-                <Link
-                  href="/dashboard"
-                  className="inline-flex items-center justify-center h-9 px-4 text-sm font-medium rounded-md bg-indicator-active text-bg-base hover:bg-indicator-active/90 transition-colors"
-                >
-                  <LayoutDashboard className="h-4 w-4 mr-2" />
-                  Dashboard
-                </Link>
-              </>
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center justify-center h-9 px-4 text-sm font-medium rounded-md bg-indicator-active text-bg-base hover:bg-indicator-active/90 transition-colors"
+              >
+                <LayoutDashboard className="h-4 w-4 mr-2" />
+                Dashboard
+              </Link>
             ) : (
               <>
                 <Link
@@ -112,15 +104,14 @@ export default function MarketingLayout({
               ))}
               <div className="pt-3 border-t border-hairline flex flex-col gap-2">
                 {isLoggedIn ? (
-                  <>
-                    <Link
-                      href="/dashboard"
-                      className="inline-flex items-center justify-center h-9 px-4 text-sm font-medium rounded-md border border-hairline hover:bg-zinc-800/50 transition-colors"
-                      onClick={() => setMobileMenuOpen(false)}
-                    >
-                      Go to Dashboard
-                    </Link>
-                  </>
+                  <Link
+                    href="/dashboard"
+                    className="inline-flex items-center justify-center h-9 px-4 text-sm font-medium rounded-md bg-indicator-active text-bg-base hover:bg-indicator-active/90 transition-colors"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <LayoutDashboard className="h-4 w-4 mr-2" />
+                    Dashboard
+                  </Link>
                 ) : (
                   <>
                     <Link

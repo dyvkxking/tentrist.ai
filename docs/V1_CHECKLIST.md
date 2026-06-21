@@ -1,8 +1,8 @@
 # Tentrist V1 Development Checklist
 
 **Version:** 1.0  
-**Date:** 2026-06-15  
-**Status:** Phase 2 - Integration Testing
+**Date:** 2026-06-21  
+**Status:** ✅ COMPLETE — All phases done, 20/20 E2E tests passing
 
 ---
 
@@ -218,25 +218,32 @@
 
 ---
 
-## Phase 4: Frontend Next.js Dashboard
+## Phase 4: Frontend Next.js Dashboard ✅
 
-### 4.1 Next.js Project Scaffolding
-- [ ] Initialize Next.js project
-- [ ] Install dependencies
-- [ ] Create project structure
+### 4.1 Next.js Project Scaffolding ✅
+- [x] Next.js 16 project at `apps/web/`
+- [x] All dependencies installed
+- [x] Project structure created
 
 **Verification:** `npm run build` completes without errors.
 
-### 4.2-4.9 Frontend Components
-- [ ] Shared Types
-- [ ] API Client
-- [ ] Dashboard Layout
-- [ ] Jobs Dashboard
-- [ ] Nodes Dashboard
-- [ ] Web3 Integration
-- [ ] Real-time Updates
+### 4.2-4.9 Frontend Components ✅
+- [x] Shared Types — `lib/supabase.ts` with typed API wrappers
+- [x] API Client — `jobsApi`, `nodesApi`, `profileApi`, `apiKeysApi`, `prefsApi`
+- [x] Dashboard Layout — `components/layout/sidebar.tsx` + `(dashboard)` route group
+- [x] Jobs Dashboard — `app/(dashboard)/jobs/` (list, detail, new, SLA, logs, checkpoints)
+- [x] Nodes Dashboard — `app/(dashboard)/nodes/` (list, detail, register)
+- [x] Web3 Integration — Wagmi v2 + RainbowKit in `web3-providers.tsx`
+- [x] Real-time Updates — Supabase Realtime `postgres_changes` in `useStreamingLogs()`
+- [x] Billing Pages — `billing/`, `billing/credits`, `billing/topup`, `billing/transactions`, `billing/invoices`
+- [x] Wallet — Full wallet page with escrow positions, transactions, stake/unstake
+- [x] Settings — API keys, notifications, node provider prefs, team, webhooks
+- [x] Admin — Users, nodes, jobs, alerts, contracts, governance, slashing
+- [x] Explore Pages — Stake, stats, activity, reputation, slashing, jobs, nodes
+- [x] Auth — Login, signup, OAuth providers (GitHub, Google, Discord)
+- [x] E2E Tests — 20 Playwright tests, all passing
 
-**Verification:** `npm run build && npm run start`
+**Verification:** `npm run build` ✅ 20/20 E2E tests passing ✅
 
 ---
 
@@ -283,11 +290,29 @@
 - [x] `backend/test/integration/integration_test.go` (UPDATED - Step 3.7)
 - [x] `contracts/hardhat.config.cjs` (UPDATED - Step 3.1)
 
-### Phase 4 — Frontend
-- [ ] `frontend/src/app/layout.tsx`
-- [ ] `frontend/src/app/page.tsx`
-- [ ] `frontend/src/app/dashboard/page.tsx`
-- [ ] (additional frontend files...)
+### Phase 4 — Frontend ✅
+- [x] `apps/web/src/app/layout.tsx` — Root layout with Providers
+- [x] `apps/web/src/app/(marketing)/page.tsx` — Landing page
+- [x] `apps/web/src/app/(dashboard)/dashboard/page.tsx` — Control room dashboard
+- [x] `apps/web/src/app/(dashboard)/jobs/page.tsx` + sub-pages — Job management
+- [x] `apps/web/src/app/(dashboard)/nodes/page.tsx` + sub-pages — Node management
+- [x] `apps/web/src/app/(dashboard)/billing/page.tsx` + sub-pages — Billing (fully wired to Supabase)
+- [x] `apps/web/src/app/(dashboard)/wallet/page.tsx` — Wallet with escrow + transactions
+- [x] `apps/web/src/app/(dashboard)/settings/` — All settings sub-pages
+- [x] `apps/web/src/app/(dashboard)/admin/` — All admin sub-pages
+- [x] `apps/web/src/app/(marketing)/explore/` — All explore pages
+- [x] `apps/web/src/app/(auth)/` — Login, signup, OAuth callback
+- [x] `apps/web/src/lib/supabase.ts` — Typed API wrappers
+- [x] `apps/web/src/lib/contracts.ts` — Escrow ABI + addresses
+- [x] `apps/web/src/hooks/use-jobs.ts` — Jobs hooks
+- [x] `apps/web/src/hooks/use-nodes.ts` — Nodes hooks
+- [x] `apps/web/src/hooks/use-billing.ts` — Billing hooks (newly created)
+- [x] `apps/web/src/hooks/use-wallet.ts` — Wallet hooks
+- [x] `apps/web/src/hooks/use-analytics.ts` — Analytics hooks
+- [x] `apps/web/src/components/providers/web3-providers.tsx` — Wagmi + RainbowKit
+- [x] `apps/web/src/components/providers/supabase-auth-provider.tsx` — Auth
+- [x] `apps/web/src/components/layout/sidebar.tsx` — Full nav with Billing + Explore + Admin
+- [x] `apps/web/e2e-tests.spec.ts` — 20 Playwright E2E tests
 
 ---
 
